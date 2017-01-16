@@ -236,6 +236,20 @@ def vec2mat(yaw,pitch,roll,x,y,z):
 
     return t
 
+def hornmm(Xframe,Xdb):
+# Least squares solution to X' = H*X. Here, X' is Xframe, X is Xdb.
+# Inputs:
+#     Xframe - Nx4 array of triangulated, homogeneous 3D landmark positions in current frame.
+#     Xdb    - Nx4 array of triangulated, homogeneous 3D landmark positions in database.
+# Outputs:
+#     H      - Transformation between X and X', or the new pose.
+#
+# Implements method in "Closed-form solution of absolute orientation using unit quaternions",
+# Horn B.K.P, J Opt Soc Am A 4(4):629-642, April 1987.
+
+    
+
+
 def objective_function1(pEst,Xframe,Xdb):
 # Objective function to be minimised to estimate pose.
 # Inputs:
