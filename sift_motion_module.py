@@ -10,6 +10,7 @@ Functions that are used in sift_motion_main.py
 - rectifyfusiello: performs stereo rectification, translated from Andre's IDL code.
 - generatedds: outputs centering values for use in rectifyfusiello.
 - vec2mat: converts six vector to 4x4 matrix.
+- hornmm: implements Horn's least squares solution for absolute orientation.
 - objective_function1: calculates objective function to be minimised with pose_estimation1.
 - pose_estimation1: estimates pose by minimising objective_function1, uses Nelder-Mead algorithm.
 
@@ -129,8 +130,8 @@ def rectifyfusiello(P1,P2,d1=np.zeros(2),d2=np.zeros(2)):
 #     P1 & P2       - 3x4 camera projection matrices for cameras 1 and 2.
 #     d1 & d2       - Centering parameters obtained from generatedds, defaulted to 0.
 # Outputs:
-#     Tr1 & Tr2     - Rectifying transforms applied to homogeneous pixel coordinates.
 #     Prec1 & Prec2 - Rectified camera projection matrices.
+#     Tr1 & Tr2     - Rectifying transforms applied to homogeneous pixel coordinates.
 
     K1,R1,C1,_,_,_,_ = cv2.decomposeProjectionMatrix(P1)
     K2,R2,C2,_,_,_,_ = cv2.decomposeProjectionMatrix(P2)
@@ -182,9 +183,12 @@ def generatedds(Tr1,Tr2):
 
 def dbmatch(frameDes,db,beta2):
 # Database matching.
+# Note: Different features such as SURF features may have different descriptor lengths.
+#       As long as the first 4 elements of the descriptor are the homogenized coordinates,
+#       the rest of the descriptor can be of any length. 
 # Inputs:
-#     frameDes - Nx128 array of descriptors for landmarks found in current frame.
-#     db       - Mx128 array of descriptors for landmarks stored in database.
+#     frameDes - Nx128 (for SIFT) array of descriptors for landmarks found in current frame.
+#     db       - Mx128 (for SIFT) array of descriptors for landmarks stored in database.
 #     beta2    - Parameter used for nearest neighbour matching.
 # Outputs:
 #     frameIdx - array of indices for the frame descriptor database.
@@ -247,8 +251,66 @@ def hornmm(Xframe,Xdb):
 # Implements method in "Closed-form solution of absolute orientation using unit quaternions",
 # Horn B.K.P, J Opt Soc Am A 4(4):629-642, April 1987.
 
+    N = Xdb.shape[0]
     
+    xc  = np.sum(Xdb[:,0])/N
+    yc  = np.sum(Xdb[:,1])/N
+    zc  = np.sum(Xdb[:,2])/N	
+    xfc = np.sum(Xframe[:,0])/N
+    yfc = np.sum(Xframe[:,1])/N 	
+    zfc = np.sum(Xframe[:,2])/N
 
+    xn  = Xdb[:,0] - xc
+    yn  = Xdb[:,1] - yc
+    zn  = Xdb[:,2] - zc
+    xfn = Xframe[:,0] - xfc
+    yfn = Xframe[:,1] - yfc
+    zfn = Xframe[:,2] - zfc
+
+    sxx = np.dot(xn,xfn)
+    sxy = np.dot(xn,yfn)
+    sxz = np.dot(xn,zfn)
+    syx = np.dot(yn,xfn)
+    syy = np.dot(yn,yfn)
+    syz = np.dot(yn,zfn)
+    szx = np.dot(zn,xfn)
+    szy = np.dot(zn,yfn)
+    szz = np.dot(zn,zfn)
+
+    M = np.array([[sxx,syy,sxz],
+                  [syx,syy,syz],
+                  [szx,szy,szz]])
+
+    N = np.array([[(sxx+syy+szz),(syz-szy),(szx-sxz),(sxy-syx)],
+                  [(syz-szy),(sxx-syy-szz),(sxy+syx),(szx+sxz)],
+                  [(szx-sxz),(sxy+syx),(-sxx+syy-szz),(syz+szy)],
+                  [(sxy-syx),(szx+sxz),(syz+szy),(-sxx-syy+szz)]])
+
+    eVal,eVec = np.linalg.eig(N)
+    index = np.argmax(eVal)
+    vec = eVec[:,index]
+    q0 = vec[0]
+    qx = vec[1]
+    qy = vec[2]
+    qz = vec[3]
+	
+    X = np.array([[(q02+qx2-qy2-qz2),2*(qx*qy-q0*qz),2*(qx*qz+q0*qy),0],
+                  [2*(qy*qx+q0*qz),(q02-qx2+qy2-qz2),2*(qy*qz-q0*qx),0],
+                  [2*(qz*qx-q0*qy),2*(qz*qy+q0*qx),(q02-qx2-qy2+qz2),0],
+                  [0,0,0,1]])
+
+    Xpos = np.array([xc,yc,zc,1])
+    Xfpos = np.array([xfc,yfc,zfc,1])
+    d = Xpos - np.dot(np.linalg.inv(X),Xfpos)
+
+    Tr = np.array([[1,0,0,-d[0]],
+                   [0,1,0,-d[1]],
+                   [0,0,1,-d[2]],
+                   [0,0,0,1]])
+
+    H = np.dot(X,Tr)
+
+    return H
 
 def objective_function1(pEst,Xframe,Xdb):
 # Objective function to be minimised to estimate pose.
