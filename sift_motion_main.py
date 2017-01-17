@@ -51,7 +51,7 @@ poseList = np.zeros((poseNumber,6))
 
 sift = cv2.xfeatures2d.SIFT_create()
 bf = cv2.BFMatcher()
-beta1 = 0.6 # NN matching parameter for intra-frame matching.
+beta1 = 0.3 # NN matching parameter for intra-frame matching.
 beta2 = 0.6 # For database matching.
 
 # Rectify for outlier removal with epipolar constraint.
@@ -122,9 +122,9 @@ for i in range(poseNumber):
     # Estimate pose. Points in frameDes that are not matched with landmarks in the database are added to database.
     if i != 0:
 
-        pest = pose_estimation1(pest,frameMatched[:,:4],dbMatched[:,:4])
+        H = hornmm(frameMatched[:,:4],dbMatched[:,:4])
+        pest = mat2vec(H)
         print("Pose estimate for frame {} is:\n {} \n".format((i+1),pest))
-        H = vec2mat(pest[0],pest[1],pest[2],pest[3],pest[4],pest[5])
         # Add new entries to database:
         frameNew = np.delete(frameDes,[frameIdx],axis=0)
         frameNew[:,:4] = mdot(np.linalg.inv(H),frameNew[:,:4].T).T
@@ -140,6 +140,6 @@ print("Time taken: {} seconds".format(timeTaken))
 Header = "Study: {} \nIntra-frame matching beta: {} \nDatabase matching beta: {}\n".format(study,beta1,beta2)
 Footer = "\n{} total landmarks in database.\nTime taken: {} seconds.".format(db.shape[0],timeTaken)
 	  
-np.savetxt('Results\PoseList5.txt',poseList,
+np.savetxt('Results\PoseList7_horn.txt',poseList,
            header=Header,
            footer=Footer)

@@ -10,6 +10,7 @@ Functions that are used in sift_motion_main.py
 - rectifyfusiello: performs stereo rectification, translated from Andre's IDL code.
 - generatedds: outputs centering values for use in rectifyfusiello.
 - vec2mat: converts six vector to 4x4 matrix.
+- mat2vec: converts 4x4 matrix to six vector.
 - hornmm: implements Horn's least squares solution for absolute orientation.
 - objective_function1: calculates objective function to be minimised with pose_estimation1.
 - pose_estimation1: estimates pose by minimising objective_function1, uses Nelder-Mead algorithm.
@@ -95,8 +96,8 @@ def skew(u):
 
     if len(u) != 3:
 
-        print("Error in skew: input vector must have 3 elements!")
-        quit()
+        print("Error in skew(): input vector must have 3 elements!")
+        return
 
     else:
 
@@ -212,10 +213,47 @@ def dbmatch(frameDes,db,beta2):
 
     return frameIdx, dbIdx
 
-def vec2mat(yaw,pitch,roll,x,y,z):
+def vec2mat(*args):
 # Converts a six vector represenation of motion to a 4x4 matrix.
 # Assumes yaw, pitch, roll are in degrees.
+# Inputs:
+#     *args - either 6 numbers (yaw,pitch,roll,x,y,z) or an array with 6 elements.
+# Outputs:
+#     t     - 4x4 matrix representation of six vector.
 
+    if len(args) == 6:
+    
+        yaw = args[0]
+        pitch = args[1]
+        roll = args[2]
+        x = args[3]
+        y = args[4]
+        z = args[5]
+
+    elif len(args) == 1:
+
+        try:
+            l = len(args[0])
+            if l != 6:
+                print("Error in vec2mat(): input must be 6 element array or 6 numbers!")
+                return
+
+        except:
+            print("Error in vec2mat(): input must be 6 element array or 6 numbers!")
+            return
+		
+        yaw = args[0][0]
+        pitch = args[0][1]
+        roll = args[0][2]
+        x = args[0][3]
+        y = args[0][4]
+        z = args[0][5]
+
+    else:
+
+        print("Error in vec2mat(): input must be 6 element array or 6 numbers!")
+        return
+	
     ax = (np.pi/180)*yaw
     ay = (np.pi/180)*pitch
     az = (np.pi/180)*roll
@@ -240,7 +278,41 @@ def vec2mat(yaw,pitch,roll,x,y,z):
 
     return t
 
+def mat2vec(H):
+# Converts a 4x4 representation of pose to a 6 vector.
+# Inputs:
+#     H - 4x4 matrix.
+# Outputs:
+#     v - [yaw,pitch,roll,x,y,z] (yaw,pitch,roll are in degrees)
+
+    if np.array(H).shape != np.eye(4).shape:
+        print("Error in mat2vec(): Input array must be 4x4!")
+        return
+
+    sy = -H[2,0]
+    cy = 1-(sy*sy)
+
+    if cy > 0.00001:
+        cy = np.sqrt(cy)
+        cx = H[2,2]/cy
+        sx = H[2,1]/cy
+        cz = H[0,0]/cy
+        sz = H[1,0]/cy
+    else:
+        cy = 0.0
+        cx = H[1,1]
+        sx = -H[1,2]
+        cz = 1.0
+        sz = 0.0
+
+    r2deg = (180/np.pi)
+    v = np.array([np.arctan2(sx,cx)*r2deg,np.arctan2(sy,cy)*r2deg,np.arctan2(sz,cz)*r2deg,
+                  H[0,3],H[1,3],H[2,3]])
+
+    return v
+
 def hornmm(Xframe,Xdb):
+# Translated from hornmm.pro
 # Least squares solution to X' = H*X. Here, X' is Xframe, X is Xdb.
 # Inputs:
 #     Xframe - Nx4 array of triangulated, homogeneous 3D landmark positions in current frame.
@@ -294,9 +366,9 @@ def hornmm(Xframe,Xdb):
     qy = vec[2]
     qz = vec[3]
 	
-    X = np.array([[(q02+qx2-qy2-qz2),2*(qx*qy-q0*qz),2*(qx*qz+q0*qy),0],
-                  [2*(qy*qx+q0*qz),(q02-qx2+qy2-qz2),2*(qy*qz-q0*qx),0],
-                  [2*(qz*qx-q0*qy),2*(qz*qy+q0*qx),(q02-qx2-qy2+qz2),0],
+    X = np.array([[(q0*q0+qx*qx-qy*qy-qz*qz),2*(qx*qy-q0*qz),2*(qx*qz+q0*qy),0],
+                  [2*(qy*qx+q0*qz),(q0*q0-qx*qx+qy*qy-qz*qz),2*(qy*qz-q0*qx),0],
+                  [2*(qz*qx-q0*qy),2*(qz*qy+q0*qx),(q0*q0-qx*qx-qy*qy+qz*qz),0],
                   [0,0,0,1]])
 
     Xpos = np.array([xc,yc,zc,1])
