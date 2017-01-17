@@ -3,10 +3,12 @@
 Test implementation of pose estimation using SURF features.
 
 """
-from sift_motion_module import *
+import sys
+import numpy as np
+import cv2
+import camerageometry as cg
+import landmarks as lm
 import time
-
-fType = 'SURF'
 start = time.clock()
 
 # Load camera matrices.
@@ -32,18 +34,33 @@ study = "yidi_nostamp" # Name of study : "yidi_nostamp", "andre_nostamp", "yidi_
 
 imgPath = "C:\\Users\\dhen2714\\Documents\\PHD_Thesis\\Experiments\\YidiRobotExp\\robot_experiment\\images\\"
 
-poseNumber = 30 # Number of frames to process.
+poseNumber = 1 # Number of frames to process.
 poseList = np.zeros((poseNumber,6))
 
-surf = cv2.xfeatures2d.SURF_create()
+desType = cv2.xfeatures2d.SIFT_create()
+if len(sys.argv) > 1:
+
+    if sys.argv[1].lower() == 'surf':
+
+        desType = cv2.xfeatures2d.SURF_create()
+    else:
+
+        print("\nFirst argument not recognised, defaulting to SIFT...")
+        sys.argv[1] = 'sift'		
+else:
+
+    sys.argv.append('SIFT')
+
 bf = cv2.BFMatcher()
 beta1 = 0.6 # NN matching parameter for intra-frame matching.
 beta2 = 0.6 # For database matching.
 
+print("\nUsing {} descriptors.\n\n".format(sys.argv[1].upper()))
+
 # Rectify for outlier removal with epipolar constraint.
-Prec1,Prec2,Tr1,Tr2 = rectifyfusiello(P1,P2)
-DD1,DD2 = generatedds(Tr1,Tr2)
-Prec1,Prec2,Tr1,Tr2 = rectifyfusiello(P1,P2,DD1,DD2)
+Prec1,Prec2,Tr1,Tr2 = cg.rectify_fusiello(P1,P2)
+DD1,DD2 = cg.generate_dds(Tr1,Tr2)
+Prec1,Prec2,Tr1,Tr2 = cg.rectify_fusiello(P1,P2,DD1,DD2)
 
 # Main loop.
 for i in range(poseNumber):
@@ -51,8 +68,8 @@ for i in range(poseNumber):
     print("Processing frame number {}...\n".format(i+1))
     img1 = cv2.imread(imgPath+study+'\\'+'cam769_pos{}.pgm'.format(i),0)
     img2 = cv2.imread(imgPath+study+'\\'+'cam802_pos{}.pgm'.format(i),0)
-    (key1, des1) = surf.detectAndCompute(img1,None)
-    (key2, des2) = surf.detectAndCompute(img2,None)
+    (key1, des1) = desType.detectAndCompute(img1,None)
+    (key2, des2) = desType.detectAndCompute(img2,None)
     desLen = des1.shape[1] # SIFT descriptors have 128 elements, SURF has 64.
 
     # Create a list of 'DMatch' objects, which can be queried to obtain matched keypoint indices and their spatial positions.
@@ -73,15 +90,15 @@ for i in range(poseNumber):
     f2Points = np.array([key2[matchProper[j].trainIdx].pt for j in range(len(matchProper))])
 
     # Correct for distortion.
-    f1Points = correctdist(f1Points,fc1,pp1,kk1,kp1)
-    f2Points = correctdist(f2Points,fc2,pp2,kk2,kp2)
+    f1Points = cg.correct_dist(f1Points,fc1,pp1,kk1,kp1)
+    f2Points = cg.correct_dist(f2Points,fc2,pp2,kk2,kp2)
 
     # Verify the matches with the epipolar constraint. indices is a 1D np array, containing the indices of points in f1Points and
     # f2Points which satisfy the epipolar constraint.
-    indices = epipolarconstraint(f1Points,f2Points,Tr1,Tr2)
+    indices = cg.epipolar_constraint(f1Points,f2Points,Tr1,Tr2)
  
     # Triangulate verified points.
-    X = lineartriangulation(P1,P2,f1Points[indices],f2Points[indices])
+    X = cg.linear_triangulation(P1,P2,f1Points[indices],f2Points[indices])
     
     # Create an array of descriptors of form [x,y,z,1,[descriptor]] triangulated points in the current frame.
     frameDes = np.ones((len(indices),4+desLen),dtype=np.float32)
@@ -102,19 +119,19 @@ for i in range(poseNumber):
 
     else:
 
-        frameIdx,dbIdx = dbmatch(frameDes,db,beta2)
+        frameIdx,dbIdx = lm.dbmatch(frameDes,db,beta2)
         frameMatched = frameDes[frameIdx]
         dbMatched = db[dbIdx]
 
     # Estimate pose. Points in frameDes that are not matched with landmarks in the database are added to database.
     if i != 0:
 
-        pest = pose_estimation1(pest,frameMatched[:,:4],dbMatched[:,:4])
+        H = cg.hornmm(frameMatched[:,:4],dbMatched[:,:4])
+        pest = cg.mat2vec(H)
         print("Pose estimate for frame {} is:\n {} \n".format((i+1),pest))
-        H = vec2mat(pest[0],pest[1],pest[2],pest[3],pest[4],pest[5])
         # Add new entries to database:
         frameNew = np.delete(frameDes,[frameIdx],axis=0)
-        frameNew[:,:4] = mdot(np.linalg.inv(H),frameNew[:,:4].T).T
+        frameNew[:,:4] = cg.mdot(np.linalg.inv(H),frameNew[:,:4].T).T
         db = np.append(db,frameNew,axis=0)
 
     poseList[i,:] = pest
@@ -127,6 +144,6 @@ print("Time taken: {} seconds".format(timeTaken))
 Header = "Feature type: {} \nStudy: {} \nIntra-frame matching beta: {} \nDatabase matching beta: {}\n"
 Footer = "\n{} total landmarks in database.\nTime taken: {} seconds."
 	  
-np.savetxt('Results\PoseListTest1_SURF.txt',poseList,
+np.savetxt('Results\PoseListTest1_SURF_horn.txt',poseList,
            header=Header.format(fType,study,beta1,beta2),
            footer=Footer.format(db.shape[0],timeTaken))
