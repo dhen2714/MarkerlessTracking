@@ -37,25 +37,34 @@ imgPath = "C:\\Users\\dhen2714\\Documents\\PHD_Thesis\\Experiments\\YidiRobotExp
 poseNumber = 1 # Number of frames to process.
 poseList = np.zeros((poseNumber,6))
 
+# Default descriptor type is SIFT, with brute force matcher.
 desType = cv2.xfeatures2d.SIFT_create()
+bf = cv2.BFMatcher()
+beta1 = 0.6 # NN matching parameter for intra-frame matching (SIFT and SURF only).
+beta2 = 0.6 # For database matching (SIFT and SURF only).
+
 if len(sys.argv) > 1:
 
     if sys.argv[1].lower() == 'surf':
 
         desType = cv2.xfeatures2d.SURF_create()
+
+    elif sys.argv[1].lower() == 'orb':
+
+        desType = cv2.ORB_create()
+        bf = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=True)
+
     else:
 
         print("\nFirst argument not recognised, defaulting to SIFT...")
-        sys.argv[1] = 'sift'		
+        sys.argv[1] = 'sift'
+		
 else:
 
     sys.argv.append('SIFT')
 
-bf = cv2.BFMatcher()
-beta1 = 0.6 # NN matching parameter for intra-frame matching.
-beta2 = 0.6 # For database matching.
-
-print("\nUsing {} descriptors.\n\n".format(sys.argv[1].upper()))
+nameDes = sys.argv[1].upper()
+print("\nUsing {} descriptors.\n\n".format(nameDes))
 
 # Rectify for outlier removal with epipolar constraint.
 Prec1,Prec2,Tr1,Tr2 = cg.rectify_fusiello(P1,P2)
@@ -73,17 +82,26 @@ for i in range(poseNumber):
     desLen = des1.shape[1] # SIFT descriptors have 128 elements, SURF has 64.
 
     # Create a list of 'DMatch' objects, which can be queried to obtain matched keypoint indices and their spatial positions.
-    match = bf.knnMatch(des1,des2,k=2)
-    matchProper = []
-    
-    for m, n in match:
-    
-        if m.distance < beta1*n.distance:
-        
-            matchProper.append(m)
+    # Matching is different depending on the type of descriptor.
+    if nameDes in ['SIFT','SURF']:
 
-    matchProper = np.array(matchProper) # Convert to numpy array for compatability.
+        flag = 1
+        match = bf.knnMatch(des1,des2,k=2)
+        matchProper = []
+    
+        for m, n in match:
+    
+            if m.distance < beta1*n.distance:
+        
+                matchProper.append(m)
+
+        matchProper = np.array(matchProper) # Convert to numpy array for compatability.
 	
+    elif nameDes == 'ORB':
+
+        flag = 2
+        matchProper = bf.match(des1,des2)
+
     # f1Points and f2Points are Nx2 pixel coordinate arrays of keypoints matched within the frame, where N is the number of matches
     # between the two cameras in the current frame.
     f1Points = np.array([key1[matchProper[j].queryIdx].pt for j in range(len(matchProper))])
@@ -119,7 +137,7 @@ for i in range(poseNumber):
 
     else:
 
-        frameIdx,dbIdx = lm.dbmatch(frameDes,db,beta2)
+        frameIdx,dbIdx = lm.dbmatch(frameDes,db,beta2,flag)
         frameMatched = frameDes[frameIdx]
         dbMatched = db[dbIdx]
 
@@ -145,5 +163,5 @@ Header = "Feature type: {} \nStudy: {} \nIntra-frame matching beta: {} \nDatabas
 Footer = "\n{} total landmarks in database.\nTime taken: {} seconds."
 	  
 np.savetxt('Results\PoseListTest1_SURF_horn.txt',poseList,
-           header=Header.format(fType,study,beta1,beta2),
+           header=Header.format(nameDes,study,beta1,beta2),
            footer=Footer.format(db.shape[0],timeTaken))

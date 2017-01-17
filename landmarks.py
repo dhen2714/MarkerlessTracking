@@ -13,7 +13,7 @@ import cv2
 from scipy.optimize import minimize
 import camerageometry as cg
 
-def dbmatch(frameDes,db,beta2):
+def dbmatch(frameDes,db,beta2,flag=1):
 # Database matching.
 # Note: Different features such as SURF features may have different descriptor lengths.
 #       As long as the first 4 elements of the descriptor are the homogenized coordinates,
@@ -21,20 +21,34 @@ def dbmatch(frameDes,db,beta2):
 # Inputs:
 #     frameDes - Nx128 (for SIFT) array of descriptors for landmarks found in current frame.
 #     db       - Mx128 (for SIFT) array of descriptors for landmarks stored in database.
-#     beta2    - Parameter used for nearest neighbour matching.
+#     beta2    - Parameter used for nearest neighbour matching (SIFT and SURF only).
+#     flag     - Depending on the type of descriptor, may be 1 or 2.
 # Outputs:
 #     frameIdx - array of indices for the frame descriptor database.
 #     dbIdx    - array of indices from database.
 
-    bf = cv2.BFMatcher()
-    matches = bf.knnMatch(frameDes[:,4:],db[:,4:],k=2)
     matchList = []
     frameIdx = []
     dbIdx = []
 
-    for m, n in matches:
+    if flag == 1:
 
-        if m.distance < beta2*n.distance:
+        bf = cv2.BFMatcher()
+        matches = bf.knnMatch(frameDes[:,4:],db[:,4:],k=2)
+
+        for m, n in matches:
+
+            if m.distance < beta2*n.distance:
+
+                frameIdx.append(m.queryIdx)
+                dbIdx.append(m.trainIdx)
+
+    elif flag == 2:
+
+        bf = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=True)
+        matches = bf.match(frameDes[:,4:],db[:,4:])
+
+        for m in matches:
 
             frameIdx.append(m.queryIdx)
             dbIdx.append(m.trainIdx)
@@ -43,8 +57,6 @@ def dbmatch(frameDes,db,beta2):
     dbIdx = np.array(dbIdx)
 
     return frameIdx, dbIdx
-
-
 
 def objective_function1(pEst,Xframe,Xdb):
 # Objective function to be minimised to estimate pose.
