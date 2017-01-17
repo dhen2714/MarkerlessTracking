@@ -8,7 +8,7 @@ For each frame:
  - Correct for distortion.
  - Triangulate.
  - Compare triangulated landmarks with those in the database.
- - Pose is estimated using Nelder-Mead algorithm.
+ - Pose is estimated using Horn's method.
 
 Pose estimation here is different to the implementation in Andre's IDL code. Pose is estimated by finding the transformation H that 
 minimises |X' - H*X|, where X' is the triangulated position of an observed landmark in the current frame, and X is the position
