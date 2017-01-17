@@ -8,7 +8,7 @@ For each frame:
  - Correct for distortion.
  - Triangulate.
  - Compare triangulated landmarks with those in the database.
- - Pose is estimated using Nelder-Mead algorithm.
+ - Pose is estimated using Horn's method.
 
 Pose estimation here is different to the implementation in Andre's IDL code. Pose is estimated by finding the transformation H that 
 minimises |X' - H*X|, where X' is the triangulated position of an observed landmark in the current frame, and X is the position
@@ -18,7 +18,10 @@ which is not the case in Andre's implementation.
 For functions used, see sift_motion_module.py
 
 """
-from sift_motion_module import *
+import numpy as np
+import cv2
+import camerageometry as cg
+import landmarks as lm
 import time
 
 start = time.clock()
@@ -51,13 +54,13 @@ poseList = np.zeros((poseNumber,6))
 
 sift = cv2.xfeatures2d.SIFT_create()
 bf = cv2.BFMatcher()
-beta1 = 0.6 # NN matching parameter for intra-frame matching.
+beta1 = 0.2 # NN matching parameter for intra-frame matching.
 beta2 = 0.6 # For database matching.
 
 # Rectify for outlier removal with epipolar constraint.
-Prec1,Prec2,Tr1,Tr2 = rectifyfusiello(P1,P2)
-DD1,DD2 = generatedds(Tr1,Tr2)
-Prec1,Prec2,Tr1,Tr2 = rectifyfusiello(P1,P2,DD1,DD2)
+Prec1,Prec2,Tr1,Tr2 = cg.rectify_fusiello(P1,P2)
+DD1,DD2 = cg.generate_dds(Tr1,Tr2)
+Prec1,Prec2,Tr1,Tr2 = cg.rectify_fusiello(P1,P2,DD1,DD2)
 
 # Main loop.
 for i in range(poseNumber):
@@ -86,15 +89,15 @@ for i in range(poseNumber):
     f2Points = np.array([key2[matchProper[j].trainIdx].pt for j in range(len(matchProper))])
 
     # Correct for distortion.
-    f1Points = correctdist(f1Points,fc1,pp1,kk1,kp1)
-    f2Points = correctdist(f2Points,fc2,pp2,kk2,kp2)
+    f1Points = cg.correct_dist(f1Points,fc1,pp1,kk1,kp1)
+    f2Points = cg.correct_dist(f2Points,fc2,pp2,kk2,kp2)
 
     # Verify the matches with the epipolar constraint. indices is a 1D np array, containing the indices of points in f1Points and
     # f2Points which satisfy the epipolar constraint.
-    indices = epipolarconstraint(f1Points,f2Points,Tr1,Tr2)
+    indices = cg.epipolar_constraint(f1Points,f2Points,Tr1,Tr2)
  
     # Triangulate verified points.
-    X = lineartriangulation(P1,P2,f1Points[indices],f2Points[indices])
+    X = cg.linear_triangulation(P1,P2,f1Points[indices],f2Points[indices])
     
     # Create an array of descriptors of form [x,y,z,1,[descriptor]] triangulated points in the current frame.
     frameDes = np.ones((len(indices),132),dtype=np.float32)
@@ -115,19 +118,19 @@ for i in range(poseNumber):
 
     else:
 
-        frameIdx,dbIdx = dbmatch(frameDes,db,beta2)
+        frameIdx,dbIdx = lm.dbmatch(frameDes,db,beta2)
         frameMatched = frameDes[frameIdx]
         dbMatched = db[dbIdx]
 
     # Estimate pose. Points in frameDes that are not matched with landmarks in the database are added to database.
     if i != 0:
 
-        pest = pose_estimation1(pest,frameMatched[:,:4],dbMatched[:,:4])
+        H = cg.hornmm(frameMatched[:,:4],dbMatched[:,:4])
+        pest = cg.mat2vec(H)
         print("Pose estimate for frame {} is:\n {} \n".format((i+1),pest))
-        H = vec2mat(pest[0],pest[1],pest[2],pest[3],pest[4],pest[5])
         # Add new entries to database:
         frameNew = np.delete(frameDes,[frameIdx],axis=0)
-        frameNew[:,:4] = mdot(np.linalg.inv(H),frameNew[:,:4].T).T
+        frameNew[:,:4] = cg.mdot(np.linalg.inv(H),frameNew[:,:4].T).T
         db = np.append(db,frameNew,axis=0)
 
     poseList[i,:] = pest
@@ -140,6 +143,10 @@ print("Time taken: {} seconds".format(timeTaken))
 Header = "Study: {} \nIntra-frame matching beta: {} \nDatabase matching beta: {}\n".format(study,beta1,beta2)
 Footer = "\n{} total landmarks in database.\nTime taken: {} seconds.".format(db.shape[0],timeTaken)
 	  
+<<<<<<< HEAD
 np.savetxt('Results\PoseListTest2.txt',poseList,
+=======
+np.savetxt('Results\PoseList8_horn.txt',poseList,
+>>>>>>> master
            header=Header,
            footer=Footer)

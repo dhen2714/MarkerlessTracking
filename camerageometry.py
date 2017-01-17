@@ -1,22 +1,21 @@
 """
+camerageometry.py
+Functions used in markerless tracking.
 
-Functions that are used in sift_motion_main.py
-
-- mdot: matrix multiplication of >= 2 arrays.
-- correctdist: corrects for distortion, translated from Andre's IDL code.
-- lineartriangluation: linear triangulation for a stereo setup.
-- skew: skew symmetric matrix from a 3D vector.
-- epipolarconstraint: accepts or rejects matches based on epipolar geometry.
-- rectifyfusiello: performs stereo rectification, translated from Andre's IDL code.
-- generatedds: outputs centering values for use in rectifyfusiello.
-- vec2mat: converts six vector to 4x4 matrix.
-- objective_function1: calculates objective function to be minimised with pose_estimation1.
-- pose_estimation1: estimates pose by minimising objective_function1, uses Nelder-Mead algorithm.
-
+This module contains:
+    mdot: Matrix multiplication of >= 2 arrays.
+    correct_dist: Corrects for distortion, translated from Andre's IDL code.
+    linear_triangluation: Linear triangulation for a stereo setup.
+    skew: Skew symmetric matrix from a 3D vector.
+    epipolar_constraint: Accepts or rejects matches based on epipolar geometry.
+    rectify_fusiello: Performs stereo rectification, translated from Andre's IDL code.
+    generate_dds: Outputs centering values for use in rectifyfusiello.
+    vec2mat: converts six vector to 4x4 matrix.
+    mat2vec: converts 4x4 matrix to six vector.
+    hornmm: Horn's least squares solution for absolute orientation.
 """
 import numpy as np
 import cv2
-from scipy.optimize import minimize
 
 def mdot(*args):
 # Matrix multiplication for more than 2 arrays, as np.mdot() can only take 2 arguments.
@@ -29,7 +28,7 @@ def mdot(*args):
 
     return ret
   
-def correctdist(vec,fc,c,k,p): 
+def correct_dist(vec,fc,c,k,p): 
 # From Andre's IDL code.
 # Inputs:
 #     vec - Nx2 array of distorted pixel coordinates.
@@ -63,7 +62,7 @@ def correctdist(vec,fc,c,k,p):
 
     return cvec
  
-def lineartriangulation(P1,P2,x1,x2):
+def linear_triangulation(P1,P2,x1,x2):
 # Linear triangulation method.
 # Inputs:
 #     P1 & P2 - Camera projection matrices for cameras 1 and 2.
@@ -94,8 +93,8 @@ def skew(u):
 
     if len(u) != 3:
 
-        print("Error in skew: input vector must have 3 elements!")
-        quit()
+        print("Error in skew(): input vector must have 3 elements!")
+        return
 
     else:
 
@@ -103,7 +102,7 @@ def skew(u):
 
     return skew
  
-def epipolarconstraint(locs1,locs2,T1,T2):
+def epipolar_constraint(locs1,locs2,T1,T2):
 # Verify matches based on epipolar geometry.
 # Inputs:
 #     locs1 & locs2     - Nx2 arrays of keypoint pixel coordinates.
@@ -122,15 +121,15 @@ def epipolarconstraint(locs1,locs2,T1,T2):
 
     return successfulMatches
  
-def rectifyfusiello(P1,P2,d1=np.zeros(2),d2=np.zeros(2)):
+def rectify_fusiello(P1,P2,d1=np.zeros(2),d2=np.zeros(2)):
 # Translation of Andre's IDL function rectify_fusiello.
 # A[R|t] factorisation is done by the opencv routine cv2.decomposeProjectionMatrix()
 # Inputs:
 #     P1 & P2       - 3x4 camera projection matrices for cameras 1 and 2.
 #     d1 & d2       - Centering parameters obtained from generatedds, defaulted to 0.
 # Outputs:
-#     Tr1 & Tr2     - Rectifying transforms applied to homogeneous pixel coordinates.
 #     Prec1 & Prec2 - Rectified camera projection matrices.
+#     Tr1 & Tr2     - Rectifying transforms applied to homogeneous pixel coordinates.
 
     K1,R1,C1,_,_,_,_ = cv2.decomposeProjectionMatrix(P1)
     K2,R2,C2,_,_,_,_ = cv2.decomposeProjectionMatrix(P2)
@@ -168,7 +167,7 @@ def rectifyfusiello(P1,P2,d1=np.zeros(2),d2=np.zeros(2)):
  
     return Prec1,Prec2,Tr1,Tr2
 
-def generatedds(Tr1,Tr2):
+def generate_dds(Tr1,Tr2):
 # Generates DD1 and DD2 for centering, used in conjunction with rectifyfusiello.
 
     p = np.array([640,480,1],ndmin=2).T
@@ -180,38 +179,47 @@ def generatedds(Tr1,Tr2):
 
     return DD1, DD2
 
-def dbmatch(frameDes,db,beta2):
-# Database matching.
-# Inputs:
-#     frameDes - Nx128 array of descriptors for landmarks found in current frame.
-#     db       - Mx128 array of descriptors for landmarks stored in database.
-#     beta2    - Parameter used for nearest neighbour matching.
-# Outputs:
-#     frameIdx - array of indices for the frame descriptor database.
-#     dbIdx    - array of indices from database.
-
-    bf = cv2.BFMatcher()
-    matches = bf.knnMatch(frameDes[:,4:],db[:,4:],k=2)
-    matchList = []
-    frameIdx = []
-    dbIdx = []
-
-    for m, n in matches:
-
-        if m.distance < beta2*n.distance:
-
-            frameIdx.append(m.queryIdx)
-            dbIdx.append(m.trainIdx)
-
-    frameIdx = np.array(frameIdx)
-    dbIdx = np.array(dbIdx)
-
-    return frameIdx, dbIdx
-
-def vec2mat(yaw,pitch,roll,x,y,z):
+def vec2mat(*args):
 # Converts a six vector represenation of motion to a 4x4 matrix.
 # Assumes yaw, pitch, roll are in degrees.
+# Inputs:
+#     *args - either 6 numbers (yaw,pitch,roll,x,y,z) or an array with 6 elements.
+# Outputs:
+#     t     - 4x4 matrix representation of six vector.
 
+    if len(args) == 6:
+    
+        yaw = args[0]
+        pitch = args[1]
+        roll = args[2]
+        x = args[3]
+        y = args[4]
+        z = args[5]
+
+    elif len(args) == 1:
+
+        try:
+            l = len(args[0])
+            if l != 6:
+                print("Error in vec2mat(): input must be 6 element array or 6 numbers!")
+                return
+
+        except:
+            print("Error in vec2mat(): input must be 6 element array or 6 numbers!")
+            return
+		
+        yaw = args[0][0]
+        pitch = args[0][1]
+        roll = args[0][2]
+        x = args[0][3]
+        y = args[0][4]
+        z = args[0][5]
+
+    else:
+
+        print("Error in vec2mat(): input must be 6 element array or 6 numbers!")
+        return
+	
     ax = (np.pi/180)*yaw
     ay = (np.pi/180)*pitch
     az = (np.pi/180)*roll
@@ -236,59 +244,108 @@ def vec2mat(yaw,pitch,roll,x,y,z):
 
     return t
 
-def objective_function1(pEst,Xframe,Xdb):
-# Objective function to be minimised to estimate pose.
+def mat2vec(H):
+# Converts a 4x4 representation of pose to a 6 vector.
 # Inputs:
-#     pEst   - Current pose estimate (six vector).
+#     H - 4x4 matrix.
+# Outputs:
+#     v - [yaw,pitch,roll,x,y,z] (yaw,pitch,roll are in degrees)
+
+    if np.array(H).shape != np.eye(4).shape:
+        print("Error in mat2vec(): Input array must be 4x4!")
+        return
+
+    sy = -H[2,0]
+    cy = 1-(sy*sy)
+
+    if cy > 0.00001:
+        cy = np.sqrt(cy)
+        cx = H[2,2]/cy
+        sx = H[2,1]/cy
+        cz = H[0,0]/cy
+        sz = H[1,0]/cy
+    else:
+        cy = 0.0
+        cx = H[1,1]
+        sx = -H[1,2]
+        cz = 1.0
+        sz = 0.0
+
+    r2deg = (180/np.pi)
+    v = np.array([np.arctan2(sx,cx)*r2deg,np.arctan2(sy,cy)*r2deg,np.arctan2(sz,cz)*r2deg,
+                  H[0,3],H[1,3],H[2,3]])
+
+    return v
+
+def hornmm(Xframe,Xdb):
+# Translated from hornmm.pro
+# Least squares solution to X' = H*X. Here, X' is Xframe, X is Xdb.
+# Inputs:
 #     Xframe - Nx4 array of triangulated, homogeneous 3D landmark positions in current frame.
 #     Xdb    - Nx4 array of triangulated, homogeneous 3D landmark positions in database.
 # Outputs:
-#     ret    - the summed norms of |Xframe - H*Xdb|, H being the 4x4 representation of pEst.
+#     H      - Transformation between X and X', or the new pose.
+#
+# Implements method in "Closed-form solution of absolute orientation using unit quaternions",
+# Horn B.K.P, J Opt Soc Am A 4(4):629-642, April 1987.
 
-    H = vec2mat(pEst[0],pEst[1],pEst[2],pEst[3],pEst[4],pEst[5])
-    diffX = abs(Xframe.T - mdot(H,Xdb.T))
-    vec = np.apply_along_axis(np.linalg.norm,0,diffX)
-    ret = sum(vec)
+    N = Xdb.shape[0]
+    
+    xc  = np.sum(Xdb[:,0])/N
+    yc  = np.sum(Xdb[:,1])/N
+    zc  = np.sum(Xdb[:,2])/N	
+    xfc = np.sum(Xframe[:,0])/N
+    yfc = np.sum(Xframe[:,1])/N 	
+    zfc = np.sum(Xframe[:,2])/N
 
-    return ret
+    xn  = Xdb[:,0] - xc
+    yn  = Xdb[:,1] - yc
+    zn  = Xdb[:,2] - zc
+    xfn = Xframe[:,0] - xfc
+    yfn = Xframe[:,1] - yfc
+    zfn = Xframe[:,2] - zfc
 
-def pose_estimation1(pEst,Xframe,Xdb):
-# Estimates pose by minimising objective_function1 using iterations of the Nelder-Mead algorithm.
-# Inputs:
-#     pEst   - Initial pose estimate (six vector).
-#     Xframe - Nx4 array of triangulated, homogeneous 3D landmark positions in current frame.
-#     Xdb    - Nx4 array of triangulated, homogeneous 3D landmark positions in database.
-# Outputs:
-#     pOut   - New pose estimate. 
+    sxx = np.dot(xn,xfn)
+    sxy = np.dot(xn,yfn)
+    sxz = np.dot(xn,zfn)
+    syx = np.dot(yn,xfn)
+    syy = np.dot(yn,yfn)
+    syz = np.dot(yn,zfn)
+    szx = np.dot(zn,xfn)
+    szy = np.dot(zn,yfn)
+    szz = np.dot(zn,zfn)
 
-    res = minimize(objective_function1,pEst,args=(Xframe,Xdb),
-                   method='nelder-mead',
-                   options={'xtol':5e-2})
-    pest = res.x				   
-    res = minimize(objective_function1,pEst,args=(Xframe,Xdb),
-                   method='nelder-mead',
-                   options={'xtol':1e-2})
-    pest = res.x				   
-    res = minimize(objective_function1,pEst,args=(Xframe,Xdb),
-                   method='nelder-mead',
-                   options={'xtol':5e-3})
-    pest = res.x				   
-    res = minimize(objective_function1,pEst,args=(Xframe,Xdb),
-                   method='nelder-mead',
-                   options={'xtol':1e-3})
-    pest = res.x				   
-    res = minimize(objective_function1,pEst,args=(Xframe,Xdb),
-                   method='nelder-mead',
-                   options={'xtol':5e-4})
-    pest = res.x
-    res = minimize(objective_function1,pEst,args=(Xframe,Xdb),
-                   method='nelder-mead',
-                   options={'xtol':1e-4})
-    pest = res.x
-    res = minimize(objective_function1,pEst,args=(Xframe,Xdb),
-                   method='nelder-mead',
-                   options={'xtol':1e-5,'disp':True})
+    M = np.array([[sxx,syy,sxz],
+                  [syx,syy,syz],
+                  [szx,szy,szz]])
 
-    pOut = res.x
+    N = np.array([[(sxx+syy+szz),(syz-szy),(szx-sxz),(sxy-syx)],
+                  [(syz-szy),(sxx-syy-szz),(sxy+syx),(szx+sxz)],
+                  [(szx-sxz),(sxy+syx),(-sxx+syy-szz),(syz+szy)],
+                  [(sxy-syx),(szx+sxz),(syz+szy),(-sxx-syy+szz)]])
 
-    return pOut
+    eVal,eVec = np.linalg.eig(N)
+    index = np.argmax(eVal)
+    vec = eVec[:,index]
+    q0 = vec[0]
+    qx = vec[1]
+    qy = vec[2]
+    qz = vec[3]
+	
+    X = np.array([[(q0*q0+qx*qx-qy*qy-qz*qz),2*(qx*qy-q0*qz),2*(qx*qz+q0*qy),0],
+                  [2*(qy*qx+q0*qz),(q0*q0-qx*qx+qy*qy-qz*qz),2*(qy*qz-q0*qx),0],
+                  [2*(qz*qx-q0*qy),2*(qz*qy+q0*qx),(q0*q0-qx*qx-qy*qy+qz*qz),0],
+                  [0,0,0,1]])
+
+    Xpos = np.array([xc,yc,zc,1])
+    Xfpos = np.array([xfc,yfc,zfc,1])
+    d = Xpos - np.dot(np.linalg.inv(X),Xfpos)
+
+    Tr = np.array([[1,0,0,-d[0]],
+                   [0,1,0,-d[1]],
+                   [0,0,1,-d[2]],
+                   [0,0,0,1]])
+
+    H = np.dot(X,Tr)
+
+    return H
