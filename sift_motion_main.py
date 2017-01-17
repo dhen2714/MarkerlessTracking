@@ -143,10 +143,6 @@ print("Time taken: {} seconds".format(timeTaken))
 Header = "Study: {} \nIntra-frame matching beta: {} \nDatabase matching beta: {}\n".format(study,beta1,beta2)
 Footer = "\n{} total landmarks in database.\nTime taken: {} seconds.".format(db.shape[0],timeTaken)
 	  
-<<<<<<< HEAD
-np.savetxt('Results\PoseListTest2.txt',poseList,
-=======
 np.savetxt('Results\PoseList8_horn.txt',poseList,
->>>>>>> master
            header=Header,
            footer=Footer)
