@@ -117,7 +117,7 @@ def epipolar_constraint(locs1,locs2,T1,T2):
     tlocs2 = np.matmul(T2,locs2.T)
     tlocsy1 = tlocs1[1,:]/tlocs1[2,:]
     tlocsy2 = tlocs2[1,:]/tlocs2[2,:]
-    successfulMatches = np.where(abs(tlocsy1-tlocsy2)<=1)[0]
+    successfulMatches = np.where(abs(tlocsy1-tlocsy2)<=5)[0]
 
     return successfulMatches
  

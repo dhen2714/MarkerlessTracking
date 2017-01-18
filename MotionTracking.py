@@ -1,6 +1,6 @@
 """
 
-Estimates pose using SIFT features.
+Estimates pose using feature detectors.
 
 For each frame:
  - Detect keypoints for both camera images.
@@ -15,19 +15,22 @@ minimises |X' - H*X|, where X' is the triangulated position of an observed landm
 of the landmark in the database. Features must thus be detected by both cameras in the stereo setup to be used in pose estimation,
 which is not the case in Andre's implementation.
 
-For functions used, see sift_motion_module.py
+For functions used, robotexp.py, camerageometry.py and landmarks.py
 
 """
+import sys
 import numpy as np
 import cv2
 import camerageometry as cg
 import landmarks as lm
+import robotexp
 import time
 
 start = time.clock()
 
 # Load camera matrices.
-P = np.fromfile("C:\\Users\\dhen2714\\Documents\\PHD_Thesis\\Experiments\\YidiRobotExp\\robot_experiment\\Pmatrices_robot_frame.dat",
+P = np.fromfile("C:\\Users\\dhen2714\\Documents\\PHD_Thesis\\Experiments\\"+
+                "YidiRobotExp\\robot_experiment\\Pmatrices_robot_frame.dat",
                 dtype=float,count=-1)
 
 P1 = P[:12].reshape(3,4)
@@ -45,16 +48,17 @@ kk2 = np.array([-0.38342, 0.58461])
 kp1 = np.array([0.00329, -0.00263]) # Tangential distortion
 kp2 = np.array([0.00115, -0.00274])
 
-study = "yidi_nostamp" # Name of study : "yidi_nostamp", "andre_nostamp", "yidi_stamp1", "yidi_stamp2", "andre_stamp1", "andre_stamp2"
+# Name of study, featureType from user input. E.g., 'yidi_nostamp' 'sift'
+study, featureType = robotexp.handle_args(sys.argv)
+print("\nChosen study is: {}\nChosen feature type is: {}\n\n".format(study,sys.argv[2].lower())) 
 
 imgPath = "C:\\Users\\dhen2714\\Documents\\PHD_Thesis\\Experiments\\YidiRobotExp\\robot_experiment\\images\\"
 
 poseNumber = 30 # Number of frames to process.
 poseList = np.zeros((poseNumber,6))
 
-sift = cv2.xfeatures2d.SIFT_create()
 bf = cv2.BFMatcher()
-beta1 = 0.2 # NN matching parameter for intra-frame matching.
+beta1 = 0.6 # NN matching parameter for intra-frame matching.
 beta2 = 0.6 # For database matching.
 
 # Rectify for outlier removal with epipolar constraint.
@@ -68,8 +72,9 @@ for i in range(poseNumber):
     print("Processing frame number {}...\n".format(i+1))
     img1 = cv2.imread(imgPath+study+'\\'+'cam769_pos{}.pgm'.format(i),0)
     img2 = cv2.imread(imgPath+study+'\\'+'cam802_pos{}.pgm'.format(i),0)
-    (key1, des1) = sift.detectAndCompute(img1,None)
-    (key2, des2) = sift.detectAndCompute(img2,None)
+    (key1, des1) = featureType.detectAndCompute(img1,None)
+    (key2, des2) = featureType.detectAndCompute(img2,None)
+    desLen = des1.shape[1] # Dependent on type of feature. SIFT has length 128, SURF has 64.
 
     # Create a list of 'DMatch' objects, which can be queried to obtain matched keypoint indices and their spatial positions.
     match = bf.knnMatch(des1,des2,k=2)
@@ -100,7 +105,7 @@ for i in range(poseNumber):
     X = cg.linear_triangulation(P1,P2,f1Points[indices],f2Points[indices])
     
     # Create an array of descriptors of form [x,y,z,1,[descriptor]] triangulated points in the current frame.
-    frameDes = np.ones((len(indices),132),dtype=np.float32)
+    frameDes = np.ones((len(indices),(4+desLen)),dtype=np.float32)
 
     for j in range(len(indices)):
 
@@ -140,9 +145,9 @@ for i in range(poseNumber):
 timeTaken = time.clock() - start
 print("Time taken: {} seconds".format(timeTaken))
 
-Header = "Study: {} \nIntra-frame matching beta: {} \nDatabase matching beta: {}\n".format(study,beta1,beta2)
-Footer = "\n{} total landmarks in database.\nTime taken: {} seconds.".format(db.shape[0],timeTaken)
+Header = "Feature Type: {} \nStudy: {} \nIntra-frame matching beta: {} \nDatabase matching beta: {}\n"
+Footer = "\n{} total landmarks in database.\nTime taken: {} seconds."
 	  
-np.savetxt('Results\PoseList8_horn.txt',poseList,
-           header=Header,
-           footer=Footer)
+np.savetxt('Results\Test.txt',poseList,
+           header=Header.format(sys.argv[2],study,beta1,beta2),
+           footer=Footer.format(db.shape[0],timeTaken))

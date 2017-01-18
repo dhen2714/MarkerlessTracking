@@ -45,16 +45,18 @@ def dbmatch(frameDes,db,beta2,flag=1):
 
     elif flag == 2:
 
-        bf = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=True)
-        matches = bf.match(frameDes[:,4:],db[:,4:])
+        bf = cv2.BFMatcher(cv2.NORM_HAMMING)
+        matches = bf.knnMatch(frameDes[:,4:],db[:,4:],k=2)
 
-        for m in matches:
+        for m, n in matches:
 
-            frameIdx.append(m.queryIdx)
-            dbIdx.append(m.trainIdx)
+            if m.distance < beta2*n.distance:
 
-    frameIdx = np.array(frameIdx)
-    dbIdx = np.array(dbIdx)
+                frameIdx.append(m.queryIdx)
+                dbIdx.append(m.trainIdx)
+
+    frameIdx = np.array(frameIdx,dtype=int)
+    dbIdx = np.array(dbIdx,dtype=int)
 
     return frameIdx, dbIdx
 
