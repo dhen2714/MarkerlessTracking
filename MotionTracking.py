@@ -15,7 +15,7 @@ minimises |X' - H*X|, where X' is the triangulated position of an observed landm
 of the landmark in the database. Features must thus be detected by both cameras in the stereo setup to be used in pose estimation,
 which is not the case in Andre's implementation.
 
-For functions used, robotexp.py, camerageometry.py and landmarks.py
+For functions used, see robotexp.py, camerageometry.py and landmarks.py
 
 """
 import sys
@@ -25,8 +25,6 @@ import camerageometry as cg
 import landmarks as lm
 import robotexp
 import time
-
-start = time.clock()
 
 # Load camera matrices.
 P = np.fromfile("C:\\Users\\dhen2714\\Documents\\PHD_Thesis\\Experiments\\"+
@@ -48,15 +46,17 @@ kk2 = np.array([-0.38342, 0.58461])
 kp1 = np.array([0.00329, -0.00263]) # Tangential distortion
 kp2 = np.array([0.00115, -0.00274])
 
-# Name of study, featureType from user input. E.g., 'yidi_nostamp' 'sift'
-study, featureType = robotexp.handle_args(sys.argv)
-print("\nChosen study is: {}\nChosen feature type is: {}\n\n".format(study,sys.argv[2].lower())) 
-
 imgPath = "C:\\Users\\dhen2714\\Documents\\PHD_Thesis\\Experiments\\YidiRobotExp\\robot_experiment\\images\\"
 
 poseNumber = 30 # Number of frames to process.
 poseList = np.zeros((poseNumber,6))
 
+# Name of study, featureType from user input. E.g., 'yidi_nostamp' 'sift'
+study, featureType = robotexp.handle_args(sys.argv)
+print("\nChosen study is: {}\n\nChosen feature type is: {}\n\n".format(study,sys.argv[2].lower()))
+input("Press ENTER to continue.\n\n")
+
+# Initialize matcher, brute force matcher in this case.
 bf = cv2.BFMatcher()
 beta1 = 0.6 # NN matching parameter for intra-frame matching.
 beta2 = 0.6 # For database matching.
@@ -66,6 +66,7 @@ Prec1,Prec2,Tr1,Tr2 = cg.rectify_fusiello(P1,P2)
 DD1,DD2 = cg.generate_dds(Tr1,Tr2)
 Prec1,Prec2,Tr1,Tr2 = cg.rectify_fusiello(P1,P2,DD1,DD2)
 
+start = time.clock()
 # Main loop.
 for i in range(poseNumber):
 
