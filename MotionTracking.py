@@ -103,7 +103,10 @@ for i in range(poseNumber):
     indices = cg.epipolar_constraint(f1Points,f2Points,Tr1,Tr2)
  
     # Triangulate verified points.
-    X = cg.linear_triangulation(P1,P2,f1Points[indices],f2Points[indices])
+    X = cv2.triangulatePoints(P1,P2,f1Points[indices].T,f2Points[indices].T)
+    X = np.apply_along_axis(lambda v: v/v[-1],0,X)
+    X = X[:3,:].T
+    #X = cg.linear_triangulation(P1,P2,f1Points[indices],f2Points[indices])
     
     # Create an array of descriptors of form [x,y,z,1,[descriptor]] triangulated points in the current frame.
     frameDes = np.ones((len(indices),(4+desLen)),dtype=np.float32)
@@ -149,6 +152,6 @@ print("Time taken: {} seconds".format(timeTaken))
 Header = "Feature Type: {} \nStudy: {} \nIntra-frame matching beta: {} \nDatabase matching beta: {}\n"
 Footer = "\n{} total landmarks in database.\nTime taken: {} seconds."
 	  
-np.savetxt('Results\Test.txt',poseList,
+np.savetxt('Results\Test2.txt',poseList,
            header=Header.format(sys.argv[2],study,beta1,beta2),
            footer=Footer.format(db.shape[0],timeTaken))
