@@ -46,7 +46,7 @@ def correct_dist(vec,fc,c,k,p):
     x = xn
     y = yn
  
-    for i in range(19):
+    for i in range(20):
 
         r2 = x*x + y*y
         r4 = r2*r2

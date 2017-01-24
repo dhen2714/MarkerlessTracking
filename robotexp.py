@@ -32,7 +32,7 @@ def handle_args(args):
     if len(args) > 2:
 
         if (str(args[2]).lower()) == 'surf':
-            featureType = cv2.xfeatures2d.SURF_create()
+            featureType = cv2.xfeatures2d.SURF_create(extended=True)
         elif (str(args[2]).lower()) == 'sift':
             featureType = cv2.xfeatures2d.SIFT_create()
         else:

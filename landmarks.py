@@ -59,6 +59,17 @@ def dbmatch(frameDes,db,beta2,flag=1):
     dbIdx = np.array(dbIdx,dtype=int)
 
     return frameIdx, dbIdx
+	
+def detect_outliers(array):
+
+    med = np.median(array)
+    mad = np.median(abs(array - med))
+    
+    mi = abs(0.6745*(array - med))/mad
+
+    outliers = np.where(mi > 3.5)[0]
+
+    return outliers
 
 def objective_function1(pEst,Xframe,Xdb):
 # Objective function to be minimised to estimate pose.

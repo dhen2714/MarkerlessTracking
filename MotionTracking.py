@@ -136,6 +136,15 @@ for i in range(poseNumber):
 
         H = cg.hornmm(frameMatched[:,:4],dbMatched[:,:4])
         pest = cg.mat2vec(H)
+        # Detect and remove outliers.
+        print("{} matches before outlier removal.\n".format(frameMatched.shape[0]))
+        sqerr = np.sqrt(np.sum(np.square((frameMatched[:,:4].T 
+                                          - np.dot(H,dbMatched[:,:4].T))),0))
+        outliers = lm.detect_outliers(sqerr)
+        frameMatched = np.delete(frameMatched,outliers,axis=0)
+        print("{} matches after outlier removal.\n".format(frameMatched.shape[0]))
+        H = cg.hornmm(frameMatched[:,:4],np.delete(dbMatched[:,:4],outliers,axis=0))
+        db = np.delete(db,dbIdx[outliers],axis=0)
         print("Pose estimate for frame {} is:\n {} \n".format((i+1),pest))
         # Add new entries to database:
         frameNew = np.delete(frameDes,[frameIdx],axis=0)
@@ -149,9 +158,11 @@ for i in range(poseNumber):
 timeTaken = time.clock() - start
 print("Time taken: {} seconds".format(timeTaken))
 
-Header = "Feature Type: {} \nStudy: {} \nIntra-frame matching beta: {} \nDatabase matching beta: {}\n"
-Footer = "\n{} total landmarks in database.\nTime taken: {} seconds."
+Header  = ("Feature Type: {} \nStudy: {} \nIntra-frame matching beta:" + 
+          " {} \nDatabase matching beta: {}\n")
+Footer  = "\n{} total landmarks in database.\nTime taken: {} seconds."
+outPath = (r"Results\test_{}_{}.txt")
 	  
-np.savetxt('Results\Test2.txt',poseList,
+np.savetxt(outPath.format(study,sys.argv[2]),poseList,
            header=Header.format(sys.argv[2],study,beta1,beta2),
            footer=Footer.format(db.shape[0],timeTaken))
