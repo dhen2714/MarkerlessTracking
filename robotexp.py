@@ -1,19 +1,20 @@
 """
 robotexp.py
-Functions used to handle arguments, load camera data for robot experiment carried out
-by Yidi.
+Functions used to handle arguments, load camera data for robot experiment 
+carried out by Yidi.
 
 """
 import numpy as np
 import cv2
 
 def handle_args(args):
-# First argument is the study name, second argument is the feature/descriptor type.
+# First argument is the study name, second argument is the feature/descriptor
+# type.
 # args should be a list.
 
     featureOptions = ['sift','surf']
-    studyOptions = ['yidi_nostamp','andre_nostamp','yidi_stamp1','yidi_stamp2',
-                    'andre_stamp1','andre_stamp2']
+    studyOptions = ['yidi_nostamp','andre_nostamp','yidi_stamp1',
+                    'yidi_stamp2','andre_stamp1','andre_stamp2']
 			
     if len(args) > 1:
         

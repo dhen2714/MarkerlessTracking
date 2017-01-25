@@ -8,7 +8,7 @@ This module contains:
     linear_triangluation: Linear triangulation for a stereo setup.
     skew: Skew symmetric matrix from a 3D vector.
     epipolar_constraint: Accepts or rejects matches based on epipolar geometry.
-    rectify_fusiello: Performs stereo rectification, translated from Andre's IDL code.
+    rectify_fusiello: Stereo rectification, translated from Andre's IDL code.
     generate_dds: Outputs centering values for use in rectifyfusiello.
     vec2mat: converts six vector to 4x4 matrix.
     mat2vec: converts 4x4 matrix to six vector.
@@ -18,7 +18,8 @@ import numpy as np
 import cv2
 
 def mdot(*args):
-# Matrix multiplication for more than 2 arrays, as np.mdot() can only take 2 arguments.
+# Matrix multiplication for more than 2 arrays, as np.mdot() can only take two 
+# arguments.
 
     ret = args[0]
 
@@ -66,7 +67,8 @@ def linear_triangulation(P1,P2,x1,x2):
 # Linear triangulation method.
 # Inputs:
 #     P1 & P2 - Camera projection matrices for cameras 1 and 2.
-#     x1 & x2 - Nx2 arrays of pixel coordinates corresponding to matched keypoints.
+#     x1 & x2 - Nx2 arrays of pixel coordinates corresponding to 
+#               matched keypoints.
 # Outputs:
 #     X       - Nx3 array of triangulated points.
 
@@ -74,8 +76,8 @@ def linear_triangulation(P1,P2,x1,x2):
     X = np.zeros((N,3),dtype=float)
 
     for i in range(N):
-
-        hx1 = np.concatenate((x1[i,:],[1])) # Homogenize pixel coordinates.
+        # Homogenize pixel coordinates.
+        hx1 = np.concatenate((x1[i,:],[1])) 
         hx2 = np.concatenate((x2[i,:],[1]))
         skewx1 = skew(hx1)
         skewx2 = skew(hx2)
@@ -108,7 +110,8 @@ def epipolar_constraint(locs1,locs2,T1,T2):
 #     locs1 & locs2     - Nx2 arrays of keypoint pixel coordinates.
 #     T1 & T2           - Rectifying transforms obtained from rectifyfusiello.
 # Outputs:
-#     successfulMatches - Array of indices corresponding to keypoints which satisfied constraints.
+#     successfulMatches - Array of indices corresponding to keypoints which 
+#                         satisfied constraints.
 
     N = locs1.shape[0]
     locs1 = np.concatenate((locs1,np.ones((N,1))),1)
@@ -123,13 +126,16 @@ def epipolar_constraint(locs1,locs2,T1,T2):
  
 def rectify_fusiello(P1,P2,d1=np.zeros(2),d2=np.zeros(2)):
 # Translation of Andre's IDL function rectify_fusiello.
-# A[R|t] factorisation is done by the opencv routine cv2.decomposeProjectionMatrix()
+# A[R|t] factorisation is done by the opencv
+# routine cv2.decomposeProjectionMatrix()
 # Inputs:
 #     P1 & P2       - 3x4 camera projection matrices for cameras 1 and 2.
-#     d1 & d2       - Centering parameters obtained from generatedds, defaulted to 0.
+#     d1 & d2       - Centering parameters obtained from generatedds, 
+#                     defaulted to 0.
 # Outputs:
 #     Prec1 & Prec2 - Rectified camera projection matrices.
-#     Tr1 & Tr2     - Rectifying transforms applied to homogeneous pixel coordinates.
+#     Tr1 & Tr2     - Rectifying transforms applied to homogeneous pixel 
+#                     coordinates.
 
     K1,R1,C1,_,_,_,_ = cv2.decomposeProjectionMatrix(P1)
     K2,R2,C2,_,_,_,_ = cv2.decomposeProjectionMatrix(P2)
@@ -143,7 +149,8 @@ def rectify_fusiello(P1,P2,d1=np.zeros(2),d2=np.zeros(2)):
     v2 = np.cross(R1[2,:],v1)
     v3 = np.cross(v1,v2)
  
-    R = np.array([v1/np.linalg.norm(v1),v2/np.linalg.norm(v2),v3/np.linalg.norm(v3)]).reshape(3,3)
+    R = np.array([v1/np.linalg.norm(v1),v2/np.linalg.norm(v2),
+                  v3/np.linalg.norm(v3)]).reshape(3,3)
  
     Kn1 = np.copy(K2)
     Kn1[0,1] = 0
@@ -168,7 +175,8 @@ def rectify_fusiello(P1,P2,d1=np.zeros(2),d2=np.zeros(2)):
     return Prec1,Prec2,Tr1,Tr2
 
 def generate_dds(Tr1,Tr2):
-# Generates DD1 and DD2 for centering, used in conjunction with rectifyfusiello.
+# Generates DD1 and DD2 for centering, used in conjunction with 
+# rectifyfusiello.
 
     p = np.array([640,480,1],ndmin=2).T
     px = np.dot(Tr1,p)
@@ -183,7 +191,8 @@ def vec2mat(*args):
 # Converts a six vector represenation of motion to a 4x4 matrix.
 # Assumes yaw, pitch, roll are in degrees.
 # Inputs:
-#     *args - either 6 numbers (yaw,pitch,roll,x,y,z) or an array with 6 elements.
+#     *args - either 6 numbers (yaw,pitch,roll,x,y,z) or an array with 
+#             6 elements.
 # Outputs:
 #     t     - 4x4 matrix representation of six vector.
 
@@ -201,11 +210,13 @@ def vec2mat(*args):
         try:
             l = len(args[0])
             if l != 6:
-                print("Error in vec2mat(): input must be 6 element array or 6 numbers!")
+                print("Error in vec2mat(): input must be 6 element array or" +
+                      " 6 numbers!")
                 return
 
         except:
-            print("Error in vec2mat(): input must be 6 element array or 6 numbers!")
+            print("Error in vec2mat(): input must be 6 element array or" + 
+                  " 6 numbers!")
             return
 		
         yaw = args[0][0]
@@ -217,7 +228,8 @@ def vec2mat(*args):
 
     else:
 
-        print("Error in vec2mat(): input must be 6 element array or 6 numbers!")
+        print("Error in vec2mat(): input must be 6 element array or" + 
+              " 6 numbers!")
         return
 	
     ax = (np.pi/180)*yaw
@@ -272,7 +284,8 @@ def mat2vec(H):
         sz = 0.0
 
     r2deg = (180/np.pi)
-    v = np.array([np.arctan2(sx,cx)*r2deg,np.arctan2(sy,cy)*r2deg,np.arctan2(sz,cz)*r2deg,
+    v = np.array([np.arctan2(sx,cx)*r2deg,np.arctan2(sy,cy)*r2deg,
+                  np.arctan2(sz,cz)*r2deg,
                   H[0,3],H[1,3],H[2,3]])
 
     return v
@@ -281,12 +294,15 @@ def hornmm(Xframe,Xdb):
 # Translated from hornmm.pro
 # Least squares solution to X' = H*X. Here, X' is Xframe, X is Xdb.
 # Inputs:
-#     Xframe - Nx4 array of triangulated, homogeneous 3D landmark positions in current frame.
-#     Xdb    - Nx4 array of triangulated, homogeneous 3D landmark positions in database.
+#     Xframe - Nx4 array of triangulated, homogeneous 3D landmark positions in
+#              current frame.
+#     Xdb    - Nx4 array of triangulated, homogeneous 3D landmark positions in 
+#              database.
 # Outputs:
 #     H      - Transformation between X and X', or the new pose.
 #
-# Implements method in "Closed-form solution of absolute orientation using unit quaternions",
+# Implements method in "Closed-form solution of absolute orientation using
+# unit quaternions",
 # Horn B.K.P, J Opt Soc Am A 4(4):629-642, April 1987.
 
     N = Xdb.shape[0]
