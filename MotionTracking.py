@@ -64,8 +64,8 @@ input("Press ENTER to continue.\n\n")
 
 # Initialize matcher, brute force matcher in this case.
 bf = cv2.BFMatcher()
-beta1 = 0.6 # NN matching parameter for intra-frame matching.
-beta2 = 0.6 # For database matching.
+beta1 = 0.9 # NN matching parameter for intra-frame matching.
+beta2 = 0.9 # For database matching.
 
 # Rectify for outlier removal with epipolar constraint.
 Prec1,Prec2,Tr1,Tr2 = cg.rectify_fusiello(P1,P2)
@@ -152,8 +152,10 @@ for i in range(poseNumber):
         # Detect and remove outliers.
         sqerr = np.sqrt(np.sum(np.square((frameMatched[:,:4].T 
                                           - np.dot(H,dbMatched[:,:4].T))),0))
+        print("{} matches before outlier removal".format(frameMatched.shape[0]))
         outliers = lm.detect_outliers(sqerr)
         frameMatched = np.delete(frameMatched,outliers,axis=0)
+        print("{} matches after outlier removal".format(frameMatched.shape[0]))
         H = cg.hornmm(frameMatched[:,:4],
                       np.delete(dbMatched[:,:4],outliers,axis=0))
         db = np.delete(db,dbIdx[outliers],axis=0)

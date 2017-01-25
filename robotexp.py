@@ -12,7 +12,7 @@ def handle_args(args):
 # type.
 # args should be a list.
 
-    featureOptions = ['sift','surf']
+    featureOptions = ['sift','surf','orb']
     studyOptions = ['yidi_nostamp','andre_nostamp','yidi_stamp1',
                     'yidi_stamp2','andre_stamp1','andre_stamp2']
 			
@@ -36,6 +36,8 @@ def handle_args(args):
             featureType = cv2.xfeatures2d.SURF_create(extended=True)
         elif (str(args[2]).lower()) == 'sift':
             featureType = cv2.xfeatures2d.SIFT_create()
+        elif (str(args[2]).lower()) == 'orb':
+            featureType = cv2.ORB_create()
         else:
             print("\nFeature detector type not recognised, try again.\n")
             quit()
