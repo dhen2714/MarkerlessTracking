@@ -4,6 +4,8 @@ Functions used in markerless tracking.
 
 This module contains:
     dbmatch: Database matching for 2 lists of 3D points.
+    detect_outliers: Returns an array of indices of outliers.
+    remove_duplicates: Removes duplicate matches.
     objective_function1: Calculates sum(|X'-H*X|).
     pose_estimation1: Iteratively finds pose by minimizing 
                       objective_function1. Uses Nelder-Mead algorithm.
@@ -31,7 +33,7 @@ def dbmatch(frameDes,db,beta2,flag=1):
 #     frameIdx - array of indices for the frame descriptor database.
 #     dbIdx    - array of indices from database.
 
-    matchList = []
+    matchProper = []
     frameIdx = []
     dbIdx = []
 
@@ -43,9 +45,7 @@ def dbmatch(frameDes,db,beta2,flag=1):
         for m, n in matches:
 
             if m.distance < beta2*n.distance:
-
-                frameIdx.append(m.queryIdx)
-                dbIdx.append(m.trainIdx)
+                matchProper.append(m)
 
     elif flag == 2:
 
@@ -55,12 +55,13 @@ def dbmatch(frameDes,db,beta2,flag=1):
         for m, n in matches:
 
             if m.distance < beta2*n.distance:
+                matchProper.append(m)
 
-                frameIdx.append(m.queryIdx)
-                dbIdx.append(m.trainIdx)
-
-    frameIdx = np.array(frameIdx,dtype=int)
-    dbIdx = np.array(dbIdx,dtype=int)
+    matchProper = remove_duplicates(np.array(matchProper))
+    frameIdx = np.array([matchProper[j].queryIdx 
+                         for j in range(len(matchProper))])
+    dbIdx = np.array([matchProper[j].trainIdx 
+                      for j in range(len(matchProper))])
 
     return frameIdx, dbIdx
 	
@@ -79,6 +80,23 @@ def detect_outliers(array):
     outliers = np.where(mi > 3.5)[0]
 
     return outliers
+	
+def remove_duplicates(matches):
+# Removes duplicate matches from a list of match objects.
+# Inputs:
+#     matches       - Numpy array of DMatch objects.
+# Outputs:
+#     matchesUnique - Same as input, but with duplicate matches removed.
+
+    matchIndices = np.array([(matches[j].queryIdx,matches[j].trainIdx)
+                             for j in range(len(matches))])
+							  
+    _,countsT = np.unique(matchIndices[:,1],return_counts=True)
+
+    matchesUnique = matches[np.where(countsT==1)[0]]
+
+    return matchesUnique
+
 
 def objective_function1(pEst,Xframe,Xdb):
 # Objective function to be minimised to estimate pose.

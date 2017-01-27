@@ -94,7 +94,8 @@ for i in range(poseNumber):
         
             matchProper.append(m)
 
-    matchProper = np.array(matchProper) # For compatibility
+    # Remove duplicate matches.
+    matchProper = lm.remove_duplicates(np.array(matchProper))
 	
     # f1Points and f2Points are Nx2 pixel coord rays of matches within the
     # frame, where N is the number of matches in the current frame.
@@ -173,7 +174,7 @@ print("Time taken: {} seconds".format(timeTaken))
 Header  = ("Feature Type: {} \nStudy: {} \nIntra-frame matching beta:" + 
           " {} \nDatabase matching beta: {}\n")
 Footer  = "\n{} total landmarks in database.\nTime taken: {} seconds."
-outPath = (r"Results\test_{}_{}.txt")
+outPath = (r"Results\dupTest_{}_{}.txt")
 	  
 np.savetxt(outPath.format(study,sys.argv[2]),poseList,
            header=Header.format(sys.argv[2],study,beta1,beta2),
