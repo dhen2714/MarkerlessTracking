@@ -83,19 +83,70 @@ for i in range(poseNumber):
     (key2, des2) = featureType.detectAndCompute(img2,None)
     # Dependent on type of feature. SIFT has length 128, SURF has 64.
     desLen = des1.shape[1]
+    
+    # Assembling descriptors of form [u,v,[descriptor]] for the current frame, 
+    # where (u,v) is the pixel coordinates of the keypoint.
+    c1des[:,:2] = np.array([key1[j].pt for j in range(len(key1))])
+    c1des[:,2:] = des1
+    c2des[:,:2] = np.array([key2[j].pt for j in range(len(key2))])
+    c2des[:,2:] = des2
+
+    # Correct for distortion.
+    c1des[:,:2] = cg.correct_dist(c1des[:,:2],fc1,pp1,kk1,kp1)
+    c2des[:,:2] = cg.correct_dist(c2des[:,:2],fc1,pp1,kk1,kp1)
+
     # Create a list of 'DMatch' objects, which can be queried to obtain
     # matched keypoint indices and their spatial positions.
     match = bf.knnMatch(des1,des2,k=2)
     matchProper = []
     
     for m, n in match:
-    
         if m.distance < beta1*n.distance:
-        
             matchProper.append(m)
 
-    # Remove duplicate matches.
+    # Remove duplicate matches (keypoints that match with more than one
+    # keypoint in the other view).
     matchProper = lm.remove_duplicates(np.array(matchProper))
+    
+    # Obtain indices of intra-frame matches.
+    in1 = np.array([key1[matchproper[j].queryIdx] 
+                    for j in range(len(matchProper))])
+    in2 = np.array([key2[matchProper[j].trainIdx]
+                    for j in range(len(matchProper))])
+                    
+    # Remove indices that don't satisfy epipolar constraint.
+    inepi = cg.epipolar_constraint(c1des[in1,:2],c2des[in2,:2],Tr1,Tr2)
+    in1 = in1[inepi]
+    in2 = in2[inepi]
+    
+    # Triangulate verified points.
+    X = cv2.triangulatePoints(P1,P2,c1des[in1,:2].T,c2des[in2,:2].T)
+    X = np.apply_allong_axis(lambda v: v/v[-1],0,X)
+    X = X[:3,:].T
+    
+    # Create an array of descriptors of form [x,y,z,1,[descriptor]]
+    # of points triangulated in current frame.
+    frameDes = np.ones((len(indices),(4+desLen)),dtype=np.float32)
+
+    for j in range(len(indices)):
+        ind = indices[j]
+        frameDes[j,:3] = X[j,:3]
+        frameDes[j,4:] = (des1[matchProper[ind].queryIdx] + 
+                          des2[matchProper[ind].trainIdx])/2
+                          
+    c1des[in1,2:] = frameDes[:,4:]
+    c2des[in2,2:] = frameDes[:,4:]
+    
+    # Database matching. If it is the first frame, the database is a copy 
+    # of frameDes.
+    if i == 0:
+        db = np.copy(frameDes)
+        frameMatched = frameDes
+        dbMatched = db
+        pest = [0,0,0,0,0,0]
+    else:
+        indb1, dbm1, indb2, dbm2 = lm.dbmatch_kps(c1des[:,2:],c2des[:,2:],
+                                                  db[:,4:],beta2)
 	
     # f1Points and f2Points are Nx2 pixel coord rays of matches within the
     # frame, where N is the number of matches in the current frame.
@@ -111,45 +162,26 @@ for i in range(poseNumber):
     # Verify the matches with the epipolar constraint. indices is a 1D array,
 	# containing indices of pixel coords of features satisfying constraint.
     indices = cg.epipolar_constraint(f1Points,f2Points,Tr1,Tr2)
- 
-    # Triangulate verified points.
-    X = cv2.triangulatePoints(P1,P2,f1Points[indices].T,f2Points[indices].T)
-    X = np.apply_along_axis(lambda v: v/v[-1],0,X)
-    X = X[:3,:].T
-    #X = cg.linear_triangulation(P1,P2,f1Points[indices],f2Points[indices])
+
     
     # Create an array of descriptors of form [x,y,z,1,[descriptor]]
     # of points triangulated in current frame.
     frameDes = np.ones((len(indices),(4+desLen)),dtype=np.float32)
 
     for j in range(len(indices)):
-
         ind = indices[j]
         frameDes[j,:3] = X[j,:3]
         frameDes[j,4:] = (des1[matchProper[ind].queryIdx] + 
                           des2[matchProper[ind].trainIdx])/2
 
-    # Database matching. If it is the first frame, the database is a copy 
-    # of frameDes.
-    if i == 0:
 
-        db = np.copy(frameDes)
-        frameMatched = frameDes
-        dbMatched = db
-        pest = [0,0,0,0,0,0]
-
-    else:
-
-        frameIdx,dbIdx = lm.dbmatch(frameDes,db,beta2)
-        frameMatched = frameDes[frameIdx]
-        dbMatched = db[dbIdx]
 
     # Estimate pose. Points in frameDes that are not matched with landmarks in
     # the database are added to database.
     if i != 0:
-
         H = cg.hornmm(frameMatched[:,:4],dbMatched[:,:4])
         pest = cg.mat2vec(H)
+
         # Detect and remove outliers.
         sqerr = np.sqrt(np.sum(np.square((frameMatched[:,:4].T 
                                           - np.dot(H,dbMatched[:,:4].T))),0))
@@ -159,6 +191,7 @@ for i in range(poseNumber):
                       np.delete(dbMatched[:,:4],outliers,axis=0))
         db = np.delete(db,dbIdx[outliers],axis=0)
         print("Pose estimate for frame {} is:\n {} \n".format((i+1),pest))
+
         # Add new entries to database:
         frameNew = np.delete(frameDes,[frameIdx],axis=0)
         frameNew[:,:4] = cg.mdot(np.linalg.inv(H),frameNew[:,:4].T).T
