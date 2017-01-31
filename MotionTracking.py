@@ -57,7 +57,7 @@ poseNumber = 30 # Number of frames to process.
 poseList = np.zeros((poseNumber,6))
 
 # Name of study, featureType from user input. E.g., 'yidi_nostamp' 'sift'
-study, featureType = robotexp.handle_args(sys.argv)
+study, featureType, estMethod = robotexp.handle_args(sys.argv)
 print("\nChosen study is: {}\n\nChosen feature type is: {}\n\n"
       .format(study,sys.argv[2].lower()))
 input("Press ENTER to continue.\n\n")
@@ -86,6 +86,8 @@ for i in range(poseNumber):
     
     # Assembling descriptors of form [u,v,[descriptor]] for the current frame, 
     # where (u,v) is the pixel coordinates of the keypoint.
+    c1des = np.zeros((len(key1),(desLen+2)),dtype=np.float32)
+    c2des = np.zeros((len(key2),(desLen+2)),dtype=np.float32)
     c1des[:,:2] = np.array([key1[j].pt for j in range(len(key1))])
     c1des[:,2:] = des1
     c2des[:,:2] = np.array([key2[j].pt for j in range(len(key2))])
@@ -109,10 +111,10 @@ for i in range(poseNumber):
     matchProper = lm.remove_duplicates(np.array(matchProper))
     
     # Obtain indices of intra-frame matches.
-    in1 = np.array([key1[matchproper[j].queryIdx] 
-                    for j in range(len(matchProper))])
-    in2 = np.array([key2[matchProper[j].trainIdx]
-                    for j in range(len(matchProper))])
+    in1 = np.array([matchProper[j].queryIdx 
+                    for j in range(len(matchProper))],dtype='int')
+    in2 = np.array([matchProper[j].trainIdx
+                    for j in range(len(matchProper))],dtype='int')
                     
     # Remove indices that don't satisfy epipolar constraint.
     inepi = cg.epipolar_constraint(c1des[in1,:2],c2des[in2,:2],Tr1,Tr2)
@@ -121,18 +123,16 @@ for i in range(poseNumber):
     
     # Triangulate verified points.
     X = cv2.triangulatePoints(P1,P2,c1des[in1,:2].T,c2des[in2,:2].T)
-    X = np.apply_allong_axis(lambda v: v/v[-1],0,X)
+    X = np.apply_along_axis(lambda v: v/v[-1],0,X)
     X = X[:3,:].T
     
     # Create an array of descriptors of form [x,y,z,1,[descriptor]]
     # of points triangulated in current frame.
-    frameDes = np.ones((len(indices),(4+desLen)),dtype=np.float32)
+    frameDes = np.ones((len(inepi),(4+desLen)),dtype=np.float32)
 
-    for j in range(len(indices)):
-        ind = indices[j]
+    for j in range(len(inepi)):
         frameDes[j,:3] = X[j,:3]
-        frameDes[j,4:] = (des1[matchProper[ind].queryIdx] + 
-                          des2[matchProper[ind].trainIdx])/2
+        frameDes[j,4:] = (des1[in1[j]] + des2[in2[j]])/2
                           
     c1des[in1,2:] = frameDes[:,4:]
     c2des[in2,2:] = frameDes[:,4:]
@@ -148,54 +148,27 @@ for i in range(poseNumber):
         indb1, dbm1, indb2, dbm2 = lm.dbmatch_kps(c1des[:,2:],c2des[:,2:],
                                                   db[:,4:],beta2)
 	
-    # f1Points and f2Points are Nx2 pixel coord rays of matches within the
-    # frame, where N is the number of matches in the current frame.
-    f1Points = np.array([key1[matchProper[j].queryIdx].pt 
-                         for j in range(len(matchProper))])
-    f2Points = np.array([key2[matchProper[j].trainIdx].pt 
-                         for j in range(len(matchProper))])
-
-    # Correct for distortion.
-    f1Points = cg.correct_dist(f1Points,fc1,pp1,kk1,kp1)
-    f2Points = cg.correct_dist(f2Points,fc2,pp2,kk2,kp2)
-
-    # Verify the matches with the epipolar constraint. indices is a 1D array,
-	# containing indices of pixel coords of features satisfying constraint.
-    indices = cg.epipolar_constraint(f1Points,f2Points,Tr1,Tr2)
-
-    
-    # Create an array of descriptors of form [x,y,z,1,[descriptor]]
-    # of points triangulated in current frame.
-    frameDes = np.ones((len(indices),(4+desLen)),dtype=np.float32)
-
-    for j in range(len(indices)):
-        ind = indices[j]
-        frameDes[j,:3] = X[j,:3]
-        frameDes[j,4:] = (des1[matchProper[ind].queryIdx] + 
-                          des2[matchProper[ind].trainIdx])/2
-
-
-
     # Estimate pose. Points in frameDes that are not matched with landmarks in
     # the database are added to database.
     if i != 0:
-        H = cg.hornmm(frameMatched[:,:4],dbMatched[:,:4])
-        pest = cg.mat2vec(H)
-
-        # Detect and remove outliers.
-        sqerr = np.sqrt(np.sum(np.square((frameMatched[:,:4].T 
-                                          - np.dot(H,dbMatched[:,:4].T))),0))
-        outliers = lm.detect_outliers(sqerr)
-        frameMatched = np.delete(frameMatched,outliers,axis=0)
-        H = cg.hornmm(frameMatched[:,:4],
-                      np.delete(dbMatched[:,:4],outliers,axis=0))
-        db = np.delete(db,dbIdx[outliers],axis=0)
-        print("Pose estimate for frame {} is:\n {} \n".format((i+1),pest))
-
-        # Add new entries to database:
-        frameNew = np.delete(frameDes,[frameIdx],axis=0)
-        frameNew[:,:4] = cg.mdot(np.linalg.inv(H),frameNew[:,:4].T).T
-        db = np.append(db,frameNew,axis=0)
+        if estMethod == 'gn':
+            pest, pflag = lm.GN_estimation(P1,P2,c1des[indb1,:2],c2des[indb2,:2],
+                                    db[dbm1,:4],db[dbm2,:4],pest)
+            H = cg.vec2mat(pest)
+            print("Pose estimate for frame {} is:\n {} \n".format((i+1),pest))
+            
+            lmInd = []
+            # Add new entries to database:
+            if pflag == 0:
+                for j in range(len(in1)):
+                    if (in1[j] not in indb1) and (in2[j] not in indb2):
+                        lmInd.append(j)
+                frameNew = frameDes[lmInd,:]
+                frameNew[:,:4] = cg.mdot(np.linalg.inv(H),frameNew[:,:4].T).T
+                db = np.append(db,frameNew,axis=0)
+        else:
+            print("Choose GN.")
+            quit()
 
     poseList[i,:] = pest
 
@@ -207,7 +180,7 @@ print("Time taken: {} seconds".format(timeTaken))
 Header  = ("Feature Type: {} \nStudy: {} \nIntra-frame matching beta:" + 
           " {} \nDatabase matching beta: {}\n")
 Footer  = "\n{} total landmarks in database.\nTime taken: {} seconds."
-outPath = (r"Results\dupTest_{}_{}.txt")
+outPath = (r"Results\TestGN_{}_{}.txt")
 	  
 np.savetxt(outPath.format(study,sys.argv[2]),poseList,
            header=Header.format(sys.argv[2],study,beta1,beta2),
