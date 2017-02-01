@@ -15,7 +15,7 @@ import cv2
 from scipy.optimize import minimize
 import camerageometry as cg
 
-def dbmatch_kps(des1,des2,db,beta2):
+def dbmatch(des1,des2,db,beta2):
 
     matches1 = []
     matches2 = []
@@ -41,8 +41,9 @@ def dbmatch_kps(des1,des2,db,beta2):
     
     return indb1, dbm1, indb2, dbm2
 
-def dbmatch(frameDes,db,beta2,flag=1):
-# Database matching.
+def dbmatch3D(frameDes,db,beta2,flag=1):
+# Database matching for feature points that have been triangulated before
+# matching.
 # Note: Different features such as SURF features may have different descriptor
 #       lengths.
 #       As long as the first 4 elements of the descriptor are the homogenized 
@@ -153,6 +154,8 @@ def GN_estimation(P1,P2,uv1m,uv2m,dbc1,dbc2,pose,iter_n=10,olThold=2):
 #     pose    - Inital pose estimate. Form [yaw,pitch,roll,x,y,z].
 # Outputs:
 #     posEst  - Final pose estimate. Form [yaw,pitch,roll,x,y,z].
+#     flag    - (-1) if pose could not be estimated due to insufficient (<3)
+#               points, 0 otherwise.
 # Options:
 #     iter_n  - Number of iterations to perform, default is 10 iterations.
 #     olThold - Absolute threshold for outlier rejection in pixels. This

@@ -141,21 +141,43 @@ for i in range(poseNumber):
     # of frameDes.
     if i == 0:
         db = np.copy(frameDes)
-        frameMatched = frameDes
         dbMatched = db
-        pest = [0,0,0,0,0,0]
-    else:
-        indb1, dbm1, indb2, dbm2 = lm.dbmatch_kps(c1des[:,2:],c2des[:,2:],
+        pEst = [0,0,0,0,0,0]
+
+    elif estMethod == 1:
+        frameIdx, dbIdx = lm.dbmatch3D(frameDes,db,beta2)
+        frameMatched = frameDes[frameIdx]
+        dbMatched = db[dbIdx]
+        
+    elif estMethod == 2:
+        indb1, dbm1, indb2, dbm2 = lm.dbmatch(c1des[:,2:],c2des[:,2:],
                                                   db[:,4:],beta2)
 	
     # Estimate pose. Points in frameDes that are not matched with landmarks in
     # the database are added to database.
     if i != 0:
-        if estMethod == 'gn':
-            pest, pflag = lm.GN_estimation(P1,P2,c1des[indb1,:2],c2des[indb2,:2],
-                                    db[dbm1,:4],db[dbm2,:4],pest)
-            H = cg.vec2mat(pest)
-            print("Pose estimate for frame {} is:\n {} \n".format((i+1),pest))
+        
+        if estMethod == 1:
+            H = cg.hornmm(frameMatched[:,:4],dbMatched[:,:4])
+            pEst = cg.mat2vec(H)
+            # Outlier removal.
+            sqerr = np.sqrt(np.sum(np.square((frameMatched[:,:4].T 
+                                          - np.dot(H,dbMatched[:,:4].T))),0))
+            outliers = lm.detect_outliers(sqerr)
+            frameMatched = np.delete(frameMatched,outliers,axis=0)
+            H = cg.hornmm(frameMatched[:,:4],
+                          np.delete(dbMatched[:,:4],outliers,axis=0))
+            db = np.delete(db,dbIdx[outliers],axis=0)
+            
+            # Add new entries to database:
+            frameNew = np.delete(frameDes,[frameIdx],axis=0)
+            frameNew[:,:4] = cg.mdot(np.linalg.inv(H),frameNew[:,:4].T).T
+            db = np.append(db,frameNew,axis=0)
+        
+        if estMethod == 2:
+            pEst, pflag = lm.GN_estimation(P1,P2,c1des[indb1,:2],c2des[indb2,:2],
+                                    db[dbm1,:4],db[dbm2,:4],pEst)
+            H = cg.vec2mat(pEst)
             
             lmInd = []
             # Add new entries to database:
@@ -166,21 +188,19 @@ for i in range(poseNumber):
                 frameNew = frameDes[lmInd,:]
                 frameNew[:,:4] = cg.mdot(np.linalg.inv(H),frameNew[:,:4].T).T
                 db = np.append(db,frameNew,axis=0)
-        else:
-            print("Choose GN.")
-            quit()
 
-    poseList[i,:] = pest
+    print("Pose estimate for frame {} is:\n {} \n".format((i+1),pEst))
+    poseList[i,:] = pEst
 
     print("{} landmarks in database.\n".format(db.shape[0]))
 
 timeTaken = time.clock() - start
 print("Time taken: {} seconds".format(timeTaken))
 
-Header  = ("Feature Type: {} \nStudy: {} \nIntra-frame matching beta:" + 
-          " {} \nDatabase matching beta: {}\n")
+Header  = ("Feature Type: {} \nStudy: {} \n Pose estimation method: {}" + 
+           "\nIntra-frame matching beta: {} \nDatabase matching beta: {}\n")
 Footer  = "\n{} total landmarks in database.\nTime taken: {} seconds."
-outPath = (r"Results\TestGN_{}_{}.txt")
+outPath = (r"Results\Poses_{}_{}.txt")
 	  
 np.savetxt(outPath.format(study,sys.argv[2]),poseList,
            header=Header.format(sys.argv[2],study,beta1,beta2),

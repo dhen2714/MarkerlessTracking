@@ -15,12 +15,13 @@ def handle_args(args):
     featureOptions = ['sift','surf']
     studyOptions = ['yidi_nostamp','andre_nostamp','yidi_stamp1',
                     'yidi_stamp2','andre_stamp1','andre_stamp2']
-    posEstOptions = ['horn','gn']
+    posEstOptions = ['1','2']
     
     if len(args) != 4:
         print("Incorrect number of arguments, specify study, feature type" + 
               " and pose estimation method. E.g.:\n\n" + 
-              "python MotionTracking.py yidi_nostamp sift GN\n\n")
+              "python MotionTracking.py yidi_nostamp sift 1\n\n" + 
+              "(1 for Horn's method, 2 for Gauss-Newton)")
         quit()
 			
     if (str(args[1]).lower() in studyOptions) is True:
@@ -31,6 +32,7 @@ def handle_args(args):
 
     if (str(args[2]).lower() in featureOptions) is True:
         if (str(args[2]).lower()) == 'surf':
+            # 'extended=True' means descriptors have length 128, instead of 64
             featureType = cv2.xfeatures2d.SURF_create(extended=True)
         elif (str(args[2]).lower()) == 'sift':
             featureType = cv2.xfeatures2d.SIFT_create()
@@ -39,11 +41,12 @@ def handle_args(args):
               featureOptions)
         quit()
         
-    if (str(args[3]).lower() in posEstOptions) is True:
-        estMethod = args[3].lower()
+    if args[3] in posEstOptions:
+        estMethod = int(args[3])
     else:
-        print("Pose estimation method not recognised, specify either Horn" +
-              " or GN.")
+        print("Pose estimation method not recognised, specify either:\n\n" +
+              "1 for Horn's method.\n" + 
+              "2 for Gauss-Newton.")
         quit()
 		
     return study, featureType, estMethod
