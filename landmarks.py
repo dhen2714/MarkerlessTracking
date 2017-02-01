@@ -3,9 +3,12 @@ landmarks.py
 Functions used in markerless tracking.
 
 This module contains:
-    dbmatch: Database matching for 2 lists of 3D points.
+    dbmatch: Database matching for 2 separate feature arrays.
+    dbmatch3D: Database matching for 2 lists of 3D points.
     detect_outliers: Returns an array of indices of outliers.
     remove_duplicates: Removes duplicate matches.
+    euler_jacobian: Constructs Jacobian for use in GN_estimation.
+    GN_estimation: Estimates pose using Gauss-Newton iterative algorithm.
     objective_function1: Calculates sum(|X'-H*X|).
     pose_estimation1: Iteratively finds pose by minimizing 
                       objective_function1. Uses Nelder-Mead algorithm.
@@ -16,6 +19,23 @@ from scipy.optimize import minimize
 import camerageometry as cg
 
 def dbmatch(des1,des2,db,beta2):
+# Database matching for features detected in individual cameras. This function
+# is used in conjunction with GN pose estimation, while dbmatch3D is used when
+# Horn's method is used to estimate pose.
+# Inputs:
+#     des1  - Array of descriptors for features detected in camera 1.
+#     des2  - Array of descriptors for features detected in camera 2.
+#     db    - Array of descriptors in databse.
+#     beta2 - Parameter for nearest neighbour matching.
+# Outputs:
+#     indb1 - Indices of camera 1 descriptors that have been matched to
+#             landmarks in database.
+#     dbm1  - Indices of database descriptors that have been matched to
+#             features detected in camera 1.
+#     indb2 - Indices of camera 2 descriptors that have been matched to 
+#             landmarks in database.
+#     dbm2  - Indices of database descriptors that have been matched to
+#             features detected in camera 2.
 
     matches1 = []
     matches2 = []
@@ -124,6 +144,16 @@ def remove_duplicates(matches):
     return matchesUnique
 
 def euler_jacobian(P,H,X,x_e):
+# Constructs the euler Jacobian for use in GN_estimation.
+# Inputs:
+#     P   - Camera matrix.
+#     H   - 4x4 matrix representation of current pose estimate.
+#     X   - Nx4 array of homogenized 3D landmark positions.
+#     x_e - 3xN array of homogenized pixel coordinates, representing the
+#           estimated pixel coordinates of observed landmarks based on current
+#           pose estimate.
+# Outputs:
+#     J   - 2N*6 Jacobian matrix.
     
     n = X.shape[0]
     J = np.ones((2*n,6))

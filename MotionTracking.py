@@ -1,24 +1,11 @@
 """
 Estimates pose using feature detectors.
 
-Accepted arguments are the study type and the feature type, E.g:
+Specify study, feature detector, and pose estimation method.
+E.g.:
+python MotionTracking.py yidi_nostamp sift 1
 
-python MotionTracking.py yidi_nostamp sift
-
-For each frame:
- - Detect keypoints for both camera images.
- - Match keypoints within the frame.
- - Correct for distortion.
- - Triangulate.
- - Compare triangulated landmarks with those in the database.
- - Pose is estimated using Horn's method.
-
-Pose estimation here is different to the implementation in Andre's IDL code. 
-Pose is estimated by finding the transformation H that minimises |X' - H*X|, 
-where X' is the triangulated position of an observed landmark in the current 
-frame, and X is the position of the landmark in the database. Features must 
-thus be detected by both cameras in the stereo setup to be used in pose 
-estimation, which is not the case in Andre's implementation.
+Last argument is 1 for Horn's method, 2 for GN.
 
 For functions used, see robotexp.py, camerageometry.py and landmarks.py
 
