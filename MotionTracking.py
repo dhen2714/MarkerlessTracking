@@ -184,11 +184,11 @@ for i in range(poseNumber):
 timeTaken = time.clock() - start
 print("Time taken: {} seconds".format(timeTaken))
 
-Header  = ("Feature Type: {} \nStudy: {} \n Pose estimation method: {}" + 
+Header  = ("Feature Type: {} \nStudy: {} \nPose estimation method: {}" + 
            "\nIntra-frame matching beta: {} \nDatabase matching beta: {}\n")
 Footer  = "\n{} total landmarks in database.\nTime taken: {} seconds."
 outPath = (r"Results\Poses_{}_{}.txt")
 	  
 np.savetxt(outPath.format(study,sys.argv[2]),poseList,
-           header=Header.format(sys.argv[2],study,beta1,beta2),
+           header=Header.format(sys.argv[2],study,estMethod,beta1,beta2),
            footer=Footer.format(db.shape[0],timeTaken))
