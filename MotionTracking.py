@@ -82,7 +82,7 @@ for i in range(poseNumber):
 
     # Correct for distortion.
     c1des[:,:2] = cg.correct_dist(c1des[:,:2],fc1,pp1,kk1,kp1)
-    c2des[:,:2] = cg.correct_dist(c2des[:,:2],fc1,pp1,kk1,kp1)
+    c2des[:,:2] = cg.correct_dist(c2des[:,:2],fc2,pp2,kk2,kp2)
 
     # Create a list of 'DMatch' objects, which can be queried to obtain
     # matched keypoint indices and their spatial positions.
