@@ -73,8 +73,8 @@ for i in range(poseNumber):
     
     # Assembling descriptors of form [u,v,[descriptor]] for the current frame, 
     # where (u,v) is the pixel coordinates of the keypoint.
-    c1des = np.zeros((len(key1),(desLen+2)),dtype=np.float64)
-    c2des = np.zeros((len(key2),(desLen+2)),dtype=np.float64)
+    c1des = np.zeros((len(key1),(desLen+2)),dtype=np.float32)
+    c2des = np.zeros((len(key2),(desLen+2)),dtype=np.float32)
     c1des[:,:2] = np.array([key1[j].pt for j in range(len(key1))])
     c1des[:,2:] = des1
     c2des[:,:2] = np.array([key2[j].pt for j in range(len(key2))])
