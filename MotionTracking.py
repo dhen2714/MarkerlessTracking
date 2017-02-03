@@ -51,8 +51,8 @@ input("Press ENTER to continue.\n\n")
 
 # Initialize matcher, brute force matcher in this case.
 bf = cv2.BFMatcher()
-beta1 = 0.9 # NN matching parameter for intra-frame matching.
-beta2 = 0.9 # For database matching.
+beta1 = 0.8 # NN matching parameter for intra-frame matching.
+beta2 = 0.8 # For database matching.
 
 # Rectify for outlier removal with epipolar constraint.
 Prec1,Prec2,Tr1,Tr2 = cg.rectify_fusiello(P1,P2)
@@ -163,8 +163,23 @@ for i in range(poseNumber):
             db = np.append(db,frameNew,axis=0)
         
         if estMethod == 2:
-            pEst, pflag = lm.GN_estimation(P1,P2,c1des[indb1,:2],c2des[indb2,:2],
-                                    db[dbm1,:4],db[dbm2,:4],pEst)
+            # In the case of no matches with database, indb1 or indb2 will be
+            # empty, which would cause error if called as indices.
+            if (len(indb1) and len(indb2)):
+                pEst, pflag = lm.GN_estimation(P1,P2,c1des[indb1,:2],
+                                               c2des[indb2,:2],db[dbm1,:4],
+                                               db[dbm2,:4],pEst)
+            elif len(indb1):
+                pEst, pflag = lm.GN_estimation(P1,P2,c1des[indb1,:2],
+                                               np.array([]),db[dbm1,:4],
+                                               np.array([]),pEst)
+            elif len(indb2):
+                pEst, pflag = lm.GN_estimation(P1,P2,np.array([]),
+                                               c2des[indb2,:2],np.array([]),
+                                               db[dbm2,:4],pEst)
+            else:
+                pflag == -1
+                print("No matches with database, returning previous pose.")
             H = cg.vec2mat(pEst)
             
             lmInd = []

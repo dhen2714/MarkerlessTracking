@@ -137,7 +137,10 @@ def remove_duplicates(matches):
     matchIndices = np.array([(matches[j].queryIdx,matches[j].trainIdx)
                              for j in range(len(matches))])
 							  
-    _,countsT = np.unique(matchIndices[:,1],return_counts=True)
+    if matchIndices.size:
+        _,countsT = np.unique(matchIndices[:,1],return_counts=True)
+    else:
+        return matches
 
     matchesUnique = matches[np.where(countsT==1)[0]]
 
