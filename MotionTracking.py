@@ -5,7 +5,8 @@ Specify study, feature detector, and pose estimation method.
 E.g.:
 python MotionTracking.py yidi_nostamp sift 1
 
-Last argument is 1 for Horn's method, 2 for GN.
+Last argument specifies the pose estimation method, and is either 1 for Horn's 
+method, or 2 for Gauss-Newton.
 
 For functions used, see robotexp.py, camerageometry.py and landmarks.py
 
@@ -44,15 +45,15 @@ poseNumber = 30 # Number of frames to process.
 poseList = np.zeros((poseNumber,6))
 
 # Name of study, featureType from user input. E.g., 'yidi_nostamp' 'sift'
-study, featureType, estMethod = robotexp.handle_args(sys.argv)
+study, featureType, beta, estMethod = robotexp.handle_args(sys.argv)
 print("\nChosen study is: {}\n\nChosen feature type is: {}\n\n"
       .format(study,sys.argv[2].lower()))
 input("Press ENTER to continue.\n\n")
 
 # Initialize matcher, brute force matcher in this case.
 bf = cv2.BFMatcher()
-beta1 = 0.8 # NN matching parameter for intra-frame matching.
-beta2 = 0.8 # For database matching.
+beta1 = beta # NN matching parameter for intra-frame matching.
+beta2 = beta # For database matching.
 
 # Rectify for outlier removal with epipolar constraint.
 Prec1,Prec2,Tr1,Tr2 = cg.rectify_fusiello(P1,P2)
@@ -133,8 +134,13 @@ for i in range(poseNumber):
 
     elif estMethod == 1:
         frameIdx, dbIdx = lm.dbmatch3D(frameDes,db,beta2)
-        frameMatched = frameDes[frameIdx]
-        dbMatched = db[dbIdx]
+        if (len(frameIdx) and len(dbIdx)):
+            frameMatched = frameDes[frameIdx]
+            dbMatched = db[dbIdx]
+        else:
+            print("No matches with database, returning previous pose.\n")
+            poseList[i,:] = pEst
+            continue
         
     elif estMethod == 2:
         indb1, dbm1, indb2, dbm2 = lm.dbmatch(c1des[:,2:],c2des[:,2:],
@@ -179,7 +185,7 @@ for i in range(poseNumber):
                                                db[dbm2,:4],pEst)
             else:
                 pflag == -1
-                print("No matches with database, returning previous pose.")
+                print("No matches with database, returning previous pose.\n")
             H = cg.vec2mat(pEst)
             
             lmInd = []

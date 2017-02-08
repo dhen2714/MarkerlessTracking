@@ -33,11 +33,14 @@ def handle_args(args):
     if (str(args[2]).lower() in featureOptions) is True:
         if (str(args[2]).lower()) == 'surf':
             # 'extended=True' means descriptors have length 128, instead of 64
-            featureType = cv2.xfeatures2d.SURF_create(extended=True)
+            featureType = cv2.xfeatures2d.SURF_create(extended=False)
+            beta = 0.6
         elif (str(args[2]).lower()) == 'sift':
             featureType = cv2.xfeatures2d.SIFT_create()
+            beta = 0.6
         elif (str(args[2]).lower()) == 'orb':
             featureType = cv2.ORB_create()
+            beta = 0.8
     else:
         print("Feature detector type not recognised, specify one of:\n\n",
               featureOptions)
@@ -51,4 +54,4 @@ def handle_args(args):
               "2 for Gauss-Newton.")
         quit()
 		
-    return study, featureType, estMethod
+    return study, featureType, beta, estMethod
