@@ -19,11 +19,11 @@ import landmarks as lm
 import robotexp
 import time
 
-imgPath = ("C:\\Users\\dhen2714\\Documents\\PHD_Thesis\\Experiments" + 
+imgPath = ("D:\\PHD_Thesis\\Experiments" + 
            "\\YidiRobotExp\\robot_experiment\\images\\")
 
 # Load camera matrices.
-P = np.fromfile("C:\\Users\\dhen2714\\Documents\\PHD_Thesis\\Experiments\\"+
+P = np.fromfile("D:\\PHD_Thesis\\Experiments\\"+
                 "YidiRobotExp\\robot_experiment\\Pmatrices_robot_frame.dat",
                 dtype=float,count=-1)
 P1 = P[:12].reshape(3,4)
@@ -48,7 +48,7 @@ poseList = np.zeros((poseNumber,6))
 study, featureType, beta, estMethod = robotexp.handle_args(sys.argv)
 print("\nChosen study is: {}\n\nChosen feature type is: {}\n\n"
       .format(study,sys.argv[2].lower()))
-input("Press ENTER to continue.\n\n")
+#input("Press ENTER to continue.\n\n")
 
 # Initialize matcher, brute force matcher in this case.
 bf = cv2.BFMatcher()
@@ -141,6 +141,7 @@ for i in range(poseNumber):
         else:
             print("Not enough matches with database, returning previous pose.\n")
             poseList[i,:] = pEst
+            pflag = -1
             continue
         
     elif estMethod == 2:
@@ -163,6 +164,7 @@ for i in range(poseNumber):
             H = cg.hornmm(frameMatched[:,:4],
                           np.delete(dbMatched[:,:4],outliers,axis=0))
             db = np.delete(db,dbIdx[outliers],axis=0)
+            pflag = 1
             
             # Add new entries to database:
             frameNew = np.delete(frameDes,[frameIdx],axis=0)
@@ -204,14 +206,19 @@ for i in range(poseNumber):
 
     print("{} landmarks in database.\n".format(db.shape[0]))
 
+if estMethod == 1:
+    eString = 'Horn'
+elif estMethod == 2:
+    eString = 'GN'
+
 timeTaken = time.clock() - start
 print("Time taken: {} seconds".format(timeTaken))
 
 Header  = ("Feature Type: {} \nStudy: {} \nPose estimation method: {}" + 
            "\nIntra-frame matching beta: {} \nDatabase matching beta: {}\n")
 Footer  = "\n{} total landmarks in database.\nTime taken: {} seconds."
-outPath = (r"Results\Poses_{}_{}.txt")
+outPath = (r"Results\{0}\Poses_{0}_{1}_{2}.txt")
 	  
-np.savetxt(outPath.format(study,sys.argv[2]),poseList,
+np.savetxt(outPath.format(study,sys.argv[2],eString),poseList,
            header=Header.format(sys.argv[2],study,estMethod,beta1,beta2),
            footer=Footer.format(db.shape[0],timeTaken))
