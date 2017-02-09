@@ -134,11 +134,12 @@ for i in range(poseNumber):
 
     elif estMethod == 1:
         frameIdx, dbIdx = lm.dbmatch3D(frameDes,db,beta2)
-        if (len(frameIdx) and len(dbIdx)):
+        # Horn's method needs at least 3 points in each frame.
+        if (len(frameIdx) >= 3 and len(dbIdx) >= 3):
             frameMatched = frameDes[frameIdx]
             dbMatched = db[dbIdx]
         else:
-            print("No matches with database, returning previous pose.\n")
+            print("Not enough matches with database, returning previous pose.\n")
             poseList[i,:] = pEst
             continue
         
