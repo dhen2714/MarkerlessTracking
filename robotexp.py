@@ -12,7 +12,7 @@ def handle_args(args):
 # type, third argument is pose estimation method.
 # args should be a list.
 
-    featureOptions = ['sift','surf','orb']
+    featureOptions = ['sift','surf','orb','brisk']
     studyOptions = ['yidi_nostamp','andre_nostamp','yidi_stamp1',
                     'yidi_stamp2','andre_stamp1','andre_stamp2']
     posEstOptions = ['1','2']
@@ -41,6 +41,9 @@ def handle_args(args):
         elif (str(args[2]).lower()) == 'orb':
             featureType = cv2.ORB_create()
             beta = 0.8
+        elif (str(args[2]).lower()) == 'brisk':
+            featureType = cv2.BRISK_create()
+            beta = 0.6
     else:
         print("Feature detector type not recognised, specify one of:\n\n",
               featureOptions)
