@@ -138,7 +138,7 @@ for i in range(poseNumber):
         if (len(frameIdx) >= 3 and len(dbIdx) >= 3):
             frameMatched = frameDes[frameIdx]
             dbMatched = db[dbIdx]
-        else:
+        else: 
             print("Not enough matches with database, returning previous pose.\n")
             poseList[i,:] = pEst
             continue
