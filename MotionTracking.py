@@ -43,6 +43,8 @@ kp2 = np.array([0.00115, -0.00274])
 
 poseNumber = 30 # Number of frames to process.
 poseList = np.zeros((poseNumber,6))
+lmList = np.zeros(poseNumber) # Record of database landmarks from frame to frame.
+estList = np.zeros(poseNumber) # How many points were used in estimating pose. 
 
 # Name of study, featureType from user input. E.g., 'yidi_nostamp' 'sift'
 study, featureType, beta, estMethod = robotexp.handle_args(sys.argv)
@@ -165,6 +167,10 @@ for i in range(poseNumber):
                           np.delete(dbMatched[:,:4],outliers,axis=0))
             db = np.delete(db,dbIdx[outliers],axis=0)
             
+            # Record number of points used to estimate pose.
+            n_est = frameMatched.shape[0]
+            estList[i] = n_est
+            
             # Add new entries to database:
             frameNew = np.delete(frameDes,[frameIdx],axis=0)
             frameNew[:,:4] = cg.mdot(np.linalg.inv(H),frameNew[:,:4].T).T
@@ -174,21 +180,25 @@ for i in range(poseNumber):
             # In the case of no matches with database, indb1 or indb2 will be
             # empty, which would cause error if called as indices.
             if (len(indb1) and len(indb2)):
-                pEst, pflag = lm.GN_estimation(P1,P2,c1des[indb1,:2],
+                pEst, n_est, pflag = lm.GN_estimation(P1,P2,c1des[indb1,:2],
                                                c2des[indb2,:2],db[dbm1,:4],
                                                db[dbm2,:4],pEst)
             elif len(indb1):
-                pEst, pflag = lm.GN_estimation(P1,P2,c1des[indb1,:2],
+                pEst, n_est, pflag = lm.GN_estimation(P1,P2,c1des[indb1,:2],
                                                np.array([]),db[dbm1,:4],
                                                np.array([]),pEst)
             elif len(indb2):
-                pEst, pflag = lm.GN_estimation(P1,P2,np.array([]),
+                pEst, n_est, pflag = lm.GN_estimation(P1,P2,np.array([]),
                                                c2des[indb2,:2],np.array([]),
                                                db[dbm2,:4],pEst)
             else:
                 pflag == -1
+                n_est = 0
                 print("No matches with database, returning previous pose.\n")
             H = cg.vec2mat(pEst)
+            
+            # Record number of points used to estimate pose.
+            estList[i] = n_est
             
             lmInd = []
             # Add new entries to database:
@@ -203,11 +213,19 @@ for i in range(poseNumber):
     print("Pose estimate for frame {} is:\n {} \n".format((i+1),pEst))
     poseList[i,:] = pEst
 
-    print("{} landmarks in database.\n".format(db.shape[0]))
+    nlm = db.shape[0]
+    lmList[i] = nlm
+    
+    print("{} landmarks in database.\n".format(nlm))
 
 end = time.perf_counter()
 timeTaken = end - start
 print("Time taken: {}.".format(timeTaken))
+
+# Save arrays of number of landmarks, and number of data points used to
+# estimate pose.
+np.savez(r'Results/info_{}_{}_{}'.format(study,sys.argv[2],estMethod),
+         lmList=lmList,estList=estList)
 
 Header  = ("Feature Type: {} \nStudy: {} \nPose estimation method: {}" + 
            "\nIntra-frame matching beta: {} \nDatabase matching beta: {}\n")
@@ -216,4 +234,4 @@ outPath = (r"Results\Poses_{}_{}.txt")
 	  
 np.savetxt(outPath.format(study,sys.argv[2]),poseList,
            header=Header.format(sys.argv[2],study,estMethod,beta1,beta2),
-           footer=Footer.format(db.shape[0],timeTaken))
+           footer=Footer.format(nlm,timeTaken))

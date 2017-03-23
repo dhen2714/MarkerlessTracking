@@ -54,8 +54,10 @@ def dbmatch(des1,des2,db,beta2):
     matches1 = remove_duplicates(np.array(matches1))
     matches2 = remove_duplicates(np.array(matches2))
     
+    # Indices of cameras 1 and 2 features that have been matched with database.
     indb1 = np.array([matches1[j].queryIdx for j in range(len(matches1))])
     indb2 = np.array([matches2[j].queryIdx for j in range(len(matches2))])
+    # Indices of database features that have been matched with cameras 1 and 2.
     dbm1 = np.array([matches1[j].trainIdx for j in range(len(matches1))])
     dbm2 = np.array([matches2[j].trainIdx for j in range(len(matches2))])
     
@@ -258,6 +260,7 @@ def GN_estimation(P1,P2,uv1m,uv2m,dbc1,dbc2,pose,iter_n=10,olThold=2):
                 
         if n1 + n2 < 3:
             print("Cannot estimate pose from this frame, return last pose.")
+            n_points = 0
             flag = -1
             return p_init, flag
             
@@ -279,10 +282,13 @@ def GN_estimation(P1,P2,uv1m,uv2m,dbc1,dbc2,pose,iter_n=10,olThold=2):
         
         hcorr = np.linalg.lstsq(A,b)
         posEst = posEst - hcorr[0]
+        
+        # Record and output number of points used to estimate pose.
+        n_points = n1 + n2
        
     flag = 0
     
-    return posEst, flag
+    return posEst, n_points, flag
 
 
 def objective_function1(pEst,Xframe,Xdb):
