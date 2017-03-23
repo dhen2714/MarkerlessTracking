@@ -60,8 +60,8 @@ Prec1,Prec2,Tr1,Tr2 = cg.rectify_fusiello(P1,P2)
 DD1,DD2 = cg.generate_dds(Tr1,Tr2)
 Prec1,Prec2,Tr1,Tr2 = cg.rectify_fusiello(P1,P2,DD1,DD2)
 
-start = time.clock()
 # Main loop.
+start = time.perf_counter()
 for i in range(poseNumber):
 
     print("Processing frame number {}...\n".format(i+1))
@@ -91,6 +91,7 @@ for i in range(poseNumber):
     matchProper = []
     
     for m, n in match:
+    # Nearest neighbour matching.
         if m.distance < beta1*n.distance:
             matchProper.append(m)
 
@@ -204,12 +205,13 @@ for i in range(poseNumber):
 
     print("{} landmarks in database.\n".format(db.shape[0]))
 
-timeTaken = time.clock() - start
-print("Time taken: {} seconds".format(timeTaken))
+end = time.perf_counter()
+timeTaken = end - start
+print("Time taken: {}.".format(timeTaken))
 
 Header  = ("Feature Type: {} \nStudy: {} \nPose estimation method: {}" + 
            "\nIntra-frame matching beta: {} \nDatabase matching beta: {}\n")
-Footer  = "\n{} total landmarks in database.\nTime taken: {} seconds."
+Footer  = "\n{} total landmarks in database.\nTime taken: {}."
 outPath = (r"Results\Poses_{}_{}.txt")
 	  
 np.savetxt(outPath.format(study,sys.argv[2]),poseList,
