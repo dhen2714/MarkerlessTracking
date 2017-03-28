@@ -58,3 +58,47 @@ def handle_args(args):
         quit()
 		
     return study, featureType, beta, estMethod
+    
+def handle_args_v2(args):
+    studyOptions = ['all','yidi_nostamp','yidi_stamp1','yidi_stamp2',
+                    'andre_nostamp','andre_stamp1','andre_stamp2']
+    detOptions = ['all','sift','surf','brisk','orb']
+    estOptions = ['all','GN','Horn']
+    
+    if len(args) != 4:
+        print("Incorrect number of arguments. Specify study, feature type" + 
+              " and pose estimation method. Possible arguments below.\n\n" +
+              "study:\n",studyOptions,"\n\nfeature type:\n",detOptions,
+              "\n\nestimation method:\n",estOptions)
+        quit()
+    
+    if (str(args[1]).lower() in studyOptions):
+        if args[1].lower() == 'all':
+            study = studyOptions[1:]
+        else:
+            study = [args[1].lower()]
+    else:
+        print("Study not recognised, specify one of \n\n",studyOptions)
+        quit()
+            
+    if (str(args[2]).lower() in detOptions):
+        if args[2].lower() == 'all':
+            featureType = detOptions[1:]
+        else:
+            featureType = [args[2].lower()]
+    else:
+        print("Feature detector type not recognised, specify one of\n\n",
+              detOptions)
+        quit()
+            
+    if args[3] in estOptions:
+        if args[3] == 'all':
+            estMethod = estOptions[1:]
+        else:
+            estMethod = [args[3]]
+    else:
+        print("Estimation method not recognised, specify one of \n\n",
+              estOptions)
+        quit()
+
+    return study, featureType, estMethod

@@ -19,11 +19,11 @@ import landmarks as lm
 import robotexp
 import time
 
-imgPath = ("C:\\Users\\dhen2714\\Documents\\PHD_Thesis\\Experiments" + 
+imgPath = ("C:\\Users\\dhen2714\\Documents\\PHD\\Experiments" + 
            "\\YidiRobotExp\\robot_experiment\\images\\")
 
 # Load camera matrices.
-P = np.fromfile("C:\\Users\\dhen2714\\Documents\\PHD_Thesis\\Experiments\\"+
+P = np.fromfile("C:\\Users\\dhen2714\\Documents\\PHD\\Experiments\\"+
                 "YidiRobotExp\\robot_experiment\\Pmatrices_robot_frame.dat",
                 dtype=float,count=-1)
 P1 = P[:12].reshape(3,4)
