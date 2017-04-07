@@ -7,9 +7,11 @@ python MotionTracking_v2.py study detector estmethod
 study: [all,yidi_nostamp,yidi_stamp1,yidi_stamp2,
         andre_nostamp,andre_stamp1,andre_stamp2]
 detector: [all,sift,surf,brisk,orb]
-estmethod: [GN, Horn]
+estmethod: [all,GN, Horn]
 
 The 'all' option loops over all studies and/or detectors.
+
+For functions used, see camerageometry.py, landmarks.py, and robotexp.py.
 """
 import sys
 import numpy as np
@@ -30,7 +32,7 @@ def motion_tracking(filepath,frames,study,featureType,estMethod,P1,P2,fc1,fc2,
 #     estMethod: For pose estimation, either GN or Horn.
 #     P1 & P2: Camera matrices.
 #     fc1 & fc2: Focal points.
-#     pp1 & pp2: Principla points.
+#     pp1 & pp2: Principal points.
 #     kk1 & kk2: Radial distortion coefficients.
 #     kp1 & kp2: Tangential distortion coefficients.
 #     Tr1 & Tr2: 3x3 rectifying transforms.
@@ -41,6 +43,7 @@ def motion_tracking(filepath,frames,study,featureType,estMethod,P1,P2,fc1,fc2,
 #     features/points used in the calculation of the pose estimate. The third
 #     column is a series of 0 or -1 depending on whether or not the pose
 #     estimation was successful or within reason for that frame.
+#     process_time: Processing time.
 
     n_frames = len(frames)
     pList = np.zeros((n_frames,6))
@@ -58,8 +61,9 @@ def motion_tracking(filepath,frames,study,featureType,estMethod,P1,P2,fc1,fc2,
     beta2 = beta # For database matching.
     
     start = time.perf_counter()
-    i = 0 # Iteration number.
+    i = 0 # Iteration number. This may not necessarily be the same as frame.
     
+    # Main loop.
     for frame in frames:
     
         print("Processing {}, frame number {}...\n".format(study,frame))
@@ -96,8 +100,9 @@ def motion_tracking(filepath,frames,study,featureType,estMethod,P1,P2,fc1,fc2,
         c1des[:,:2] = cg.correct_dist(c1des[:,:2],fc1,pp1,kk1,kp1)
         c2des[:,:2] = cg.correct_dist(c2des[:,:2],fc2,pp2,kk2,kp2)
 
-        # Create a list of 'DMatch' objects, which can be queried to obtain
-        # matched keypoint indices and their spatial positions.
+        # Intra-frame matching - create a list of 'DMatch' objects, which can 
+        # be queried to obtain matched keypoint indices and their 
+        # spatial positions.
         match = bf.knnMatch(des1,des2,k=2)
         matchProper = []
     
@@ -249,7 +254,7 @@ if __name__ == '__main__':
 
     # Load camera matrices.
     P = np.fromfile(r'C:/Users/dhen2714/Documents/PHD/Experiments/'+
-                    r'YidiRobotExp/robot_experiment/Pmatrices_robot_frame.dat',
+                    r'YidiRobotExp/robot_experiment/Pmatrices.dat',
                     dtype=float,count=-1)
     P1 = P[:12].reshape(3,4)
     P2 = P[12:].reshape(3,4)
@@ -273,17 +278,19 @@ if __name__ == '__main__':
     DD1,DD2 = cg.generate_dds(Tr1,Tr2)
     Prec1,Prec2,Tr1,Tr2 = cg.rectify_fusiello(P1,P2,DD1,DD2)
     
-    # Valid frame indices. Some images in certian studies have been mislabelled,
+    # Valid frame indices. Some images in certain studies have been mislabelled,
     # so only certain frames should be processed.
     frames_yns = np.arange(30)
     frames_ys1 = np.array([0,1,2,3,4,5,6,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29])
     frames_ys2 = np.array([0,1,2,3,4,5,6,7,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,25,26,27,28,29])
     frames_ans = np.array([0,1,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29])
-    frames_as1 = np.array([0,1,2,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,25,26,27,28,29])
+    #frames_as1 = np.array([0,1,2,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,25,26,27,28,29])
+    # 3/4/17 - Try this array of indices from as1. Instead of using pos2, use pos3.
+    frames_as1 = np.array([0,1,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,25,26,27,28,29])
     frames_as2 = np.arange(30)
     valid_frames = [frames_yns,frames_ys1,frames_ys2,frames_ans,frames_as1,frames_as2]
     
-    output_path = r'C:/Users/dhen2714/Documents/PHD/Experiments/YidiRobotExp/20170328_Results/'
+    output_path = r'C:/Users/dhen2714/Documents/PHD/Experiments/YidiRobotExp/20170403_Results/Results_no_cc/'
     
     tot_start = time.perf_counter()
     for study in studies:
