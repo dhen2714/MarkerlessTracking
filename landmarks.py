@@ -18,7 +18,7 @@ import cv2
 from scipy.optimize import minimize
 import camerageometry as cg
 
-def dbmatch(des1,des2,db,beta2):
+def dbmatch(des1,des2,db,fType):
 # Database matching for features detected in individual cameras. This function
 # is used in conjunction with GN pose estimation, while dbmatch3D is used when
 # Horn's method is used to estimate pose.
@@ -26,7 +26,7 @@ def dbmatch(des1,des2,db,beta2):
 #     des1  - Array of descriptors for features detected in camera 1.
 #     des2  - Array of descriptors for features detected in camera 2.
 #     db    - Array of descriptors in databse.
-#     beta2 - Parameter for nearest neighbour matching.
+#     fType - The feature descriptor type.
 # Outputs:
 #     indb1 - Indices of camera 1 descriptors that have been matched to
 #             landmarks in database.
@@ -39,20 +39,25 @@ def dbmatch(des1,des2,db,beta2):
 
     matches1 = []
     matches2 = []
-    bf = cv2.BFMatcher()
     
-    matches = bf.knnMatch(des1,db,k=2)
-    for m, n in matches:
-        if m.distance < beta2*n.distance:
-            matches1.append(m)
-    
-    matches = bf.knnMatch(des2,db,k=2)
-    for m, n in matches:
-        if m.distance < beta2*n.distance:
-            matches2.append(m)
-            
-    matches1 = remove_duplicates(np.array(matches1))
-    matches2 = remove_duplicates(np.array(matches2))
+    if fType in ['sift','surf']:
+        bf = cv2.BFMatcher()
+        m1 = bf.knnMatch(des1,db,k=2)
+        m2 = bf.knnMatch(des2,db,k=2)
+        
+        for m, n in m1:
+            if m.distance < 0.6*n.distance:
+                matches1.append(m)
+        for m, n in m2:
+            if m.distance < 0.6*n.distance:
+                matches2.append(m)
+                
+        matches1 = remove_duplicates(np.array(matches1))
+        matches2 = remove_duplicates(np.array(matches2))
+    else:
+        bf = cv2.BFMatcher(cv2.NORM_HAMMING,crossCheck=True)
+        matches1 = bf.match(des1,db)
+        matches2 = bf.match(des2,db)
     
     # Indices of cameras 1 and 2 features that have been matched with database.
     indb1 = np.array([matches1[j].queryIdx for j in range(len(matches1))])
@@ -63,7 +68,7 @@ def dbmatch(des1,des2,db,beta2):
     
     return indb1, dbm1, indb2, dbm2
 
-def dbmatch3D(frameDes,db,beta2,flag=1):
+def dbmatch3D(frameDes,db,fType):
 # Database matching for feature points that have been triangulated before
 # matching.
 # Note: Different features such as SURF features may have different descriptor
@@ -86,23 +91,20 @@ def dbmatch3D(frameDes,db,beta2,flag=1):
     frameIdx = []
     dbIdx = []
 
-    if flag == 1:
+    if fType in ['sift','surf']:
         bf = cv2.BFMatcher()
-        matches = bf.knnMatch(frameDes[:,4:],db[:,4:],k=2)
+        matches = bf.knnMatch(frameDes,db,k=2)
 
         for m, n in matches:
-            if m.distance < beta2*n.distance:
+            if m.distance < 0.6*n.distance:
                 matchProper.append(m)
-
-    elif flag == 2:
-        bf = cv2.BFMatcher(cv2.NORM_HAMMING)
-        matches = bf.knnMatch(frameDes[:,4:],db[:,4:],k=2)
-
-        for m, n in matches:
-            if m.distance < beta2*n.distance:
-                matchProper.append(m)
-
-    matchProper = remove_duplicates(np.array(matchProper))
+                
+        matchProper = remove_duplicates(np.array(matchProper))
+    
+    else:
+        bf = cv2.BFMatcher(cv2.NORM_HAMMING,crossCheck=True)
+        matchProper = bf.match(frameDes,db)
+   
     frameIdx = np.array([matchProper[j].queryIdx 
                          for j in range(len(matchProper))])
     dbIdx = np.array([matchProper[j].trainIdx 

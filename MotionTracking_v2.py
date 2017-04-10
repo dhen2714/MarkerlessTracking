@@ -50,16 +50,26 @@ def motion_tracking(filepath,frames,study,featureType,estMethod,P1,P2,fc1,fc2,
     lms_record = np.zeros((n_frames,3))
     
     # Initialize matcher, brute force matcher in this case.
-    bf = cv2.BFMatcher()
-    # Beta value of less than 0.8 for orb leads to bad results. Other feature
-    # types are not so sensitive.
-    if featureType == 'orb':
-        beta = 0.8
+    if featureType in ['sift','surf']:
+    # For SIFT and SURF, use nearest neighbour matching and L2 NORM.
+        bf = cv2.BFMatcher(cv2.NORM_L2)
+        desType = np.float32
     else:
-        beta = 0.6
-    beta1 = beta # NN matching parameter for intra-frame matching.
-    beta2 = beta # For database matching.
-    
+    # ORB and BRISK use binary descriptors, use HAMMING norm instead of L2.
+    # crossCheck makes sure matches are mutually the best for each set of
+    # keypoints.
+        bf = cv2.BFMatcher(cv2.NORM_HAMMING,crossCheck=True)
+        desType = np.uint8
+        
+    if featureType == 'sift':
+        fT = cv2.xfeatures2d.SIFT_create()
+    elif featureType == 'surf':
+        fT = cv2.xfeatures2d.SURF_create()
+    elif featureType == 'brisk':
+        fT = cv2.BRISK_create()
+    elif featureType == 'orb':
+        fT = cv2.ORB_create()
+
     start = time.perf_counter()
     i = 0 # Iteration number. This may not necessarily be the same as frame.
     
@@ -71,49 +81,39 @@ def motion_tracking(filepath,frames,study,featureType,estMethod,P1,P2,fc1,fc2,
                           'cam769_pos{}.pgm'.format(frame),0)
         img2 = cv2.imread(filepath+r'/'+study+r'/'+
                           'cam802_pos{}.pgm'.format(frame),0)
-        
-        if featureType == 'sift':
-            fT = cv2.xfeatures2d.SIFT_create()
-        elif featureType == 'surf':
-            fT = cv2.xfeatures2d.SURF_create()
-        elif featureType == 'brisk':
-            fT = cv2.BRISK_create()
-        elif featureType == 'orb':
-            fT = cv2.ORB_create()
-    
+           
         (key1, des1) = fT.detectAndCompute(img1,None)
         (key2, des2) = fT.detectAndCompute(img2,None)
         
         # Length of descriptor is dependent on feature type.
         des_len = des1.shape[1]
     
-        # Assembling descriptors of form [u,v,[descriptor]] for the current frame, 
-        # where (u,v) is the pixel coordinates of the keypoint.
-        c1des = np.zeros((len(key1),(des_len+2)),dtype=np.float32)
-        c2des = np.zeros((len(key2),(des_len+2)),dtype=np.float32)
-        c1des[:,:2] = np.array([key1[j].pt for j in range(len(key1))])
-        c1des[:,2:] = des1
-        c2des[:,:2] = np.array([key2[j].pt for j in range(len(key2))])
-        c2des[:,2:] = des2
+        # Assembling arrays of pixel coords for keypoints in current frame. 
+        c1px = np.zeros((len(key1),2),dtype=np.float32)
+        c2px = np.zeros((len(key2),2),dtype=np.float32)
+        c1px[:,:] = np.array([key1[j].pt for j in range(len(key1))])
+        c2px[:,:] = np.array([key2[j].pt for j in range(len(key2))])
 
         # Correct for distortion.
-        c1des[:,:2] = cg.correct_dist(c1des[:,:2],fc1,pp1,kk1,kp1)
-        c2des[:,:2] = cg.correct_dist(c2des[:,:2],fc2,pp2,kk2,kp2)
+        c1px = cg.correct_dist(c1px,fc1,pp1,kk1,kp1)
+        c2px = cg.correct_dist(c2px,fc2,pp2,kk2,kp2)
 
         # Intra-frame matching - create a list of 'DMatch' objects, which can 
         # be queried to obtain matched keypoint indices and their 
         # spatial positions.
-        match = bf.knnMatch(des1,des2,k=2)
-        matchProper = []
-    
-        for m, n in match:
-        # Nearest neighbour matching.
-            if m.distance < beta1*n.distance:
-                matchProper.append(m)
-    
-        # Remove duplicate matches (keypoints that match with more than one
-        # keypoint in the other view).
-        matchProper = lm.remove_duplicates(np.array(matchProper))
+        if featureType in ['sift','surf']:
+            match = bf.knnMatch(des1,des2,k=2)
+            matchProper = []
+            
+            for m, n in match:
+                if m.distance < 0.6*n.distance:
+                    matchProper.append(m)
+        # Remove duplicate matches. This doesn't have to be done for ORB or
+        # BRISK as crossCheck has been enabled for those two.
+            matchProper = lm.remove_duplicates(np.array(matchProper))
+        else:
+        # For ORB and BRISK.
+            matchProper = bf.match(des1,des2)
     
         # Obtain indices of intra-frame matches.
         in1 = np.array([matchProper[j].queryIdx 
@@ -122,92 +122,102 @@ def motion_tracking(filepath,frames,study,featureType,estMethod,P1,P2,fc1,fc2,
                         for j in range(len(matchProper))],dtype='int')
                     
         # Remove indices that don't satisfy epipolar constraint.
-        inepi = cg.epipolar_constraint(c1des[in1,:2],c2des[in2,:2],Tr1,Tr2)
+        inepi = cg.epipolar_constraint(c1px[in1],c2px[in2],Tr1,Tr2)
         in1 = in1[inepi]
         in2 = in2[inepi]
     
         # Triangulate verified points.
-        X = cv2.triangulatePoints(P1,P2,c1des[in1,:2].T,c2des[in2,:2].T)
+        X = cv2.triangulatePoints(P1,P2,c1px[in1].T,c2px[in2].T)
         X = np.apply_along_axis(lambda v: v/v[-1],0,X)
         X = X[:3,:].T
     
-        # Create an array of descriptors of form [x,y,z,1,[descriptor]]
-        # of points triangulated in current frame.
-        frameDes = np.ones((len(inepi),(4+des_len)),dtype=np.float32)
-        for j in range(len(inepi)):
-            frameDes[j,:3] = X[j,:3]
-            frameDes[j,4:] = (des1[in1[j]] + des2[in2[j]])/2
-                          
-        c1des[in1,2:] = frameDes[:,4:]
-        c2des[in2,2:] = frameDes[:,4:]
-    
+        # framePos is an Nx4 augmented array of 3D triangulated keypoint
+        # positions. frameDes are the corresponding descriptors of these
+        # intra-frame matches.
+        framePos = np.ones((len(inepi),4),dtype=np.float32)
+        frameDes = np.ones((len(inepi),des_len),dtype=desType)
+        framePos[:,:3] = X
+        if featureType in ['sift','surf']:
+            frameDes = (des1[in1] + des2[in2])/2
+            des1[in1] = (des1[in1] + des2[in2])/2
+            des2[in2] = (des1[in1] + des2[in2])/2
+        else:
+            frameDes = des1[in1]
+        
         # Database matching. If it is the first frame, the database is a copy 
         # of frameDes.
         if i == 0:
-            db = np.copy(frameDes)
-            dbMatched = db
+            dbPos = np.copy(framePos)
+            dbDes = np.copy(frameDes)
+            dbPos_matched = dbPos
+            dbDes_matched = dbDes
             pEst = [0,0,0,0,0,0]
 
         elif estMethod == 'Horn':
-            frameIdx, dbIdx = lm.dbmatch3D(frameDes,db,beta2)
+            frameIdx, dbIdx = lm.dbmatch3D(frameDes,dbDes,featureType)
             # Horn's method needs at least 3 points in each frame.
             if (len(frameIdx) >= 3 and len(dbIdx) >= 3):
-                frameMatched = frameDes[frameIdx]
-                dbMatched = db[dbIdx]
+                framePos_matched = framePos[frameIdx]
+                frameDes_matched = frameDes[frameIdx]
+                dbPos_matched = dbPos[dbIdx]
+                dbDes_matched = dbDes[dbIdx]
             else: 
                 print("Not enough matches with database, returning previous pose.\n")
                 pList[i,:] = pEst
-                lms_record[i,0] = db.shape[0]
+                lms_record[i,0] = dbPos.shape[0]
                 lms_record[i,1] = 0
                 lms_record[i,2] = -1
                 i += 1
                 continue
         
         elif estMethod == 'GN':
-            indb1, dbm1, indb2, dbm2 = lm.dbmatch(c1des[:,2:],c2des[:,2:],
-                                                  db[:,4:],beta2)
+            indb1, dbm1, indb2, dbm2 = lm.dbmatch(des1,des2,
+                                                  dbDes,featureType)
 	
         # Estimate pose. Points in frameDes that are not matched with landmarks in
         # the database are added to database.
         if i != 0:
         
             if estMethod == 'Horn':
-                H = cg.hornmm(frameMatched[:,:4],dbMatched[:,:4])
+                H = cg.hornmm(framePos_matched,dbPos_matched)
                 pEst = cg.mat2vec(H)
                 # Outlier removal.
-                sqerr = np.sqrt(np.sum(np.square((frameMatched[:,:4].T 
-                                - np.dot(H,dbMatched[:,:4].T))),0))
+                sqerr = np.sqrt(np.sum(np.square((framePos_matched.T 
+                                - np.dot(H,dbPos_matched.T))),0))
 
                 outliers = lm.detect_outliers(sqerr)
-                frameMatched = np.delete(frameMatched,outliers,axis=0)
-                H = cg.hornmm(frameMatched[:,:4],
-                            np.delete(dbMatched[:,:4],outliers,axis=0))
-                db = np.delete(db,dbIdx[outliers],axis=0)
+                framePos_matched = np.delete(framePos_matched,outliers,axis=0)
+                H = cg.hornmm(framePos_matched,
+                            np.delete(dbPos_matched,outliers,axis=0))
+                dbPos = np.delete(dbPos,dbIdx[outliers],axis=0)
+                dbDes = np.delete(dbDes,dbIdx[outliers],axis=0)
             
                 # Record number of points used to estimate pose.
-                lms_record[i,1] = frameMatched.shape[0]
+                lms_record[i,1] = framePos_matched.shape[0]
                 pflag = 0
             
                 # Add new entries to database:
-                frameNew = np.delete(frameDes,[frameIdx],axis=0)
-                frameNew[:,:4] = cg.mdot(np.linalg.inv(H),frameNew[:,:4].T).T
-                db = np.append(db,frameNew,axis=0)
+                framePos_new = np.delete(framePos,[frameIdx],axis=0)
+                frameDes_new = np.delete(frameDes,[frameIdx],axis=0)
+                framePos_new = cg.mdot(np.linalg.inv(H),framePos_new.T).T
+                dbPos = np.append(dbPos,framePos_new,axis=0)
+                dbDes = np.append(dbDes,frameDes_new,axis=0)
         
             if estMethod == 'GN':
                 # In the case of no matches with database, indb1 or indb2 will be
                 # empty, which would cause error if called as indices.
                 if (len(indb1) and len(indb2)):
-                    pEst, n_est, pflag = lm.GN_estimation(P1,P2,c1des[indb1,:2],
-                                                c2des[indb2,:2],db[dbm1,:4],
-                                                db[dbm2,:4],pEst)
+                    pEst, n_est, pflag = lm.GN_estimation(P1,P2,c1px[indb1,:],
+                                                c2px[indb2,:],dbPos[dbm1,:],
+                                                dbPos[dbm2,:],pEst)
                 elif len(indb1):
-                    pEst, n_est, pflag = lm.GN_estimation(P1,P2,c1des[indb1,:2],
-                                                np.array([]),db[dbm1,:4],
+                    pEst, n_est, pflag = lm.GN_estimation(P1,P2,c1px[indb1,:],
+                                                np.array([]),dbPos[dbm1,:],
                                                 np.array([]),pEst)
                 elif len(indb2):
                     pEst, n_est, pflag = lm.GN_estimation(P1,P2,np.array([]),
-                                                c2des[indb2,:2],np.array([]),
-                                                db[dbm2,:4],pEst)
+                                                c2px[indb2,:],np.array([]),
+                                                dbPos[dbm2,:],pEst)
                 else:
                     pflag = -1
                     n_est = 0
@@ -225,17 +235,21 @@ def motion_tracking(filepath,frames,study,featureType,estMethod,P1,P2,fc1,fc2,
                     for j in range(len(in1)):
                         if (in1[j] not in indb1) and (in2[j] not in indb2):
                             lmInd.append(j)
-                    frameNew = frameDes[lmInd,:]
-                    frameNew[:,:4] = cg.mdot(np.linalg.inv(H),frameNew[:,:4].T).T
-                    db = np.append(db,frameNew,axis=0)
+                    framePos_new = framePos[lmInd,:]
+                    frameDes_new = frameDes[lmInd,:]
+                    framePos_new = cg.mdot(np.linalg.inv(H),framePos_new.T).T
+                    dbPos = np.append(dbPos,framePos_new,axis=0)
+                    dbDes = np.append(dbDes,frameDes_new,axis=0)
 
         print("Pose estimate for frame {} of {} is:\n {} \n".format(frame,study,pEst))
         pList[i,:] = pEst
 
-        nlm = db.shape[0]
+        nlm = dbPos.shape[0]
         lms_record[i,0] = nlm
     
         print("{} landmarks in database.\n".format(nlm))
+        #if i == 1:
+            #break
         # Update iteration number
         i += 1
 
@@ -254,7 +268,7 @@ if __name__ == '__main__':
 
     # Load camera matrices.
     P = np.fromfile(r'C:/Users/dhen2714/Documents/PHD/Experiments/'+
-                    r'YidiRobotExp/robot_experiment/Pmatrices.dat',
+                    r'YidiRobotExp/robot_experiment/Pmatrices_robot_frame.dat',
                     dtype=float,count=-1)
     P1 = P[:12].reshape(3,4)
     P2 = P[12:].reshape(3,4)
@@ -290,7 +304,7 @@ if __name__ == '__main__':
     frames_as2 = np.arange(30)
     valid_frames = [frames_yns,frames_ys1,frames_ys2,frames_ans,frames_as1,frames_as2]
     
-    output_path = r'C:/Users/dhen2714/Documents/PHD/Experiments/YidiRobotExp/20170403_Results/Results_no_cc/'
+    output_path = r'C:/Users/dhen2714/Documents/PHD/Experiments/YidiRobotExp/Results/Test/'
     
     tot_start = time.perf_counter()
     for study in studies:
