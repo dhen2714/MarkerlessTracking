@@ -58,6 +58,13 @@ def dbmatch(des1,des2,db,fType):
         bf = cv2.BFMatcher(cv2.NORM_HAMMING,crossCheck=True)
         matches1 = bf.match(des1,db)
         matches2 = bf.match(des2,db)
+        thresh = 0.1
+        thresh_1 = int(np.floor(thresh*len(matches1)))
+        thresh_2 = int(np.floor(thresh*len(matches2)))
+        matches1 = sorted(matches1,key = lambda x:x.distance)
+        matches2 = sorted(matches2,key = lambda x:x.distance)
+        matches1 = matches1[:thresh_1]
+        matches2 = matches2[:thresh_2]
     
     # Indices of cameras 1 and 2 features that have been matched with database.
     indb1 = np.array([matches1[j].queryIdx for j in range(len(matches1))])
@@ -78,7 +85,7 @@ def dbmatch3D(frameDes,db,fType):
 # Inputs:
 #     frameDes - Nx128 (for SIFT) array of descriptors for landmarks found in 
 #                current frame.
-#     db       - Mx128 (for SIFT) array of descriptors for landmarks stored in 
+#     db       - Nx128 (for SIFT) array of descriptors for landmarks stored in 
 #                database.
 #     beta2    - Parameter used for nearest neighbour matching (SIFT and SURF 
 #                only).
@@ -98,13 +105,16 @@ def dbmatch3D(frameDes,db,fType):
         for m, n in matches:
             if m.distance < 0.6*n.distance:
                 matchProper.append(m)
-                
-        matchProper = remove_duplicates(np.array(matchProper))
     
+        matchProper = remove_duplicates(np.array(matchProper))
     else:
         bf = cv2.BFMatcher(cv2.NORM_HAMMING,crossCheck=True)
-        matchProper = bf.match(frameDes,db)
-   
+        match = bf.match(frameDes,db)
+        thresh = 0.1
+        thresh_n = int(np.floor(thresh*len(match)))
+        matchProper = sorted(match,key=lambda x:x.distance)
+        matchProper = matchProper[:thresh_n]
+       
     frameIdx = np.array([matchProper[j].queryIdx 
                          for j in range(len(matchProper))])
     dbIdx = np.array([matchProper[j].trainIdx 

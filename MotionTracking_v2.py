@@ -107,14 +107,18 @@ def motion_tracking(filepath,frames,study,featureType,estMethod,P1,P2,fc1,fc2,
             
             for m, n in match:
                 if m.distance < 0.6*n.distance:
-                    matchProper.append(m)
-        # Remove duplicate matches. This doesn't have to be done for ORB or
-        # BRISK as crossCheck has been enabled for those two.
-            matchProper = lm.remove_duplicates(np.array(matchProper))
+                    matchProper.append(m)            
         else:
         # For ORB and BRISK.
-            matchProper = bf.match(des1,des2)
-    
+            match = bf.match(des1,des2)
+            thresh = 0.1
+            matchProper = sorted(match,key = lambda x:x.distance)
+            thresh_n = int(np.floor(thresh*len(match)))
+            matchProper = matchProper[:thresh_n]
+        
+        # Remove duplicate (unreliable) matches.
+        matchProper = lm.remove_duplicates(np.array(matchProper))
+        
         # Obtain indices of intra-frame matches.
         in1 = np.array([matchProper[j].queryIdx 
                         for j in range(len(matchProper))],dtype='int')
@@ -248,8 +252,7 @@ def motion_tracking(filepath,frames,study,featureType,estMethod,P1,P2,fc1,fc2,
         lms_record[i,0] = nlm
     
         print("{} landmarks in database.\n".format(nlm))
-        #if i == 1:
-            #break
+
         # Update iteration number
         i += 1
 
