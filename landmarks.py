@@ -18,7 +18,37 @@ import cv2
 from scipy.optimize import minimize
 import camerageometry as cg
 
-def dbmatch(des1,des2,db,fType):
+def binary_thresh(matches,threshold):
+    """
+    Returns subset of input matches, such that the output is an array of
+    matches which have Hamming distance lower than the specified threshold.
+    
+    Parameters
+    ----------
+    matches : numpy array of DMatch objects.
+    threshold : int
+        Threshold Hamming distance value. Matches with Hamming distance larger
+        than this will be rejected.
+    
+    Returns
+    -------
+    matches_new : array_like of DMatch objects.
+        List of sorted matches which have Hamming distance lower than
+        threshold.
+    """
+    
+    # Make sure array of matches is a numpy array.
+    matches = np.array(matches)
+    dist = np.array([match.distance for match in matches])
+    dist_sort = np.argsort(dist)
+    cutoff = np.searchsorted(dist[dist_sort],threshold)
+    dist_sort = dist_sort[:cutoff]
+    
+    matches_new = matches[dist_sort]
+    
+    return matches_new
+
+def dbmatch(des1,des2,db,fType,*threshold):
 # Database matching for features detected in individual cameras. This function
 # is used in conjunction with GN pose estimation, while dbmatch3D is used when
 # Horn's method is used to estimate pose.
@@ -27,6 +57,7 @@ def dbmatch(des1,des2,db,fType):
 #     des2  - Array of descriptors for features detected in camera 2.
 #     db    - Array of descriptors in databse.
 #     fType - The feature descriptor type.
+#     threshold - For binary descriptors, see function binary_thresh.
 # Outputs:
 #     indb1 - Indices of camera 1 descriptors that have been matched to
 #             landmarks in database.
@@ -56,15 +87,10 @@ def dbmatch(des1,des2,db,fType):
         matches2 = remove_duplicates(np.array(matches2))
     else:
         bf = cv2.BFMatcher(cv2.NORM_HAMMING,crossCheck=True)
-        matches1 = bf.match(des1,db)
-        matches2 = bf.match(des2,db)
-        thresh = 0.1
-        thresh_1 = int(np.floor(thresh*len(matches1)))
-        thresh_2 = int(np.floor(thresh*len(matches2)))
-        matches1 = sorted(matches1,key = lambda x:x.distance)
-        matches2 = sorted(matches2,key = lambda x:x.distance)
-        matches1 = matches1[:thresh_1]
-        matches2 = matches2[:thresh_2]
+        m1 = bf.match(des1,db)
+        m2 = bf.match(des2,db)
+        matches1 = binary_thresh(m1,threshold)
+        matches2 = binary_thresh(m2,threshold)
     
     # Indices of cameras 1 and 2 features that have been matched with database.
     indb1 = np.array([matches1[j].queryIdx for j in range(len(matches1))])
@@ -75,7 +101,7 @@ def dbmatch(des1,des2,db,fType):
     
     return indb1, dbm1, indb2, dbm2
 
-def dbmatch3D(frameDes,db,fType):
+def dbmatch3D(frameDes,db,fType,*threshold):
 # Database matching for feature points that have been triangulated before
 # matching.
 # Note: Different features such as SURF features may have different descriptor
@@ -87,9 +113,7 @@ def dbmatch3D(frameDes,db,fType):
 #                current frame.
 #     db       - Nx128 (for SIFT) array of descriptors for landmarks stored in 
 #                database.
-#     beta2    - Parameter used for nearest neighbour matching (SIFT and SURF 
-#                only).
-#     flag     - Depending on the type of descriptor, may be 1 or 2.
+#     threshold - For binary descriptors, see function binary_thresh.
 # Outputs:
 #     frameIdx - array of indices for the frame descriptor database.
 #     dbIdx    - array of indices from database.
@@ -110,10 +134,7 @@ def dbmatch3D(frameDes,db,fType):
     else:
         bf = cv2.BFMatcher(cv2.NORM_HAMMING,crossCheck=True)
         match = bf.match(frameDes,db)
-        thresh = 0.1
-        thresh_n = int(np.floor(thresh*len(match)))
-        matchProper = sorted(match,key=lambda x:x.distance)
-        matchProper = matchProper[:thresh_n]
+        matchProper = binary_thresh(match,threshold)
        
     frameIdx = np.array([matchProper[j].queryIdx 
                          for j in range(len(matchProper))])

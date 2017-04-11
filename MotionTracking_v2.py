@@ -21,7 +21,7 @@ import landmarks as lm
 import robotexp
 import time
 
-def motion_tracking(filepath,frames,study,featureType,estMethod,P1,P2,fc1,fc2,
+def motion_tracking(filepath,frames,study,featureType,estMethod,binary_thresh,P1,P2,fc1,fc2,
                     pp1,pp2,kk1,kk2,kp1,kp2,Tr1,Tr2):
 # This function incorporates the main loop of MotionTracking.py.
 # Inputs:
@@ -30,6 +30,7 @@ def motion_tracking(filepath,frames,study,featureType,estMethod,P1,P2,fc1,fc2,
 #     study: The study, e.g. yidi_nostamp
 #     featureType: The feature/descriptor to use.
 #     estMethod: For pose estimation, either GN or Horn.
+#     binary_thresh: Threshold used to reject matches for binary descriptors.
 #     P1 & P2: Camera matrices.
 #     fc1 & fc2: Focal points.
 #     pp1 & pp2: Principal points.
@@ -107,18 +108,15 @@ def motion_tracking(filepath,frames,study,featureType,estMethod,P1,P2,fc1,fc2,
             
             for m, n in match:
                 if m.distance < 0.6*n.distance:
-                    matchProper.append(m)            
+                    matchProper.append(m)
+                        
+        # Remove duplicate (unreliable) matches.
+            matchProper = lm.remove_duplicates(np.array(matchProper))
         else:
         # For ORB and BRISK.
             match = bf.match(des1,des2)
-            thresh = 0.1
-            matchProper = sorted(match,key = lambda x:x.distance)
-            thresh_n = int(np.floor(thresh*len(match)))
-            matchProper = matchProper[:thresh_n]
-        
-        # Remove duplicate (unreliable) matches.
-        matchProper = lm.remove_duplicates(np.array(matchProper))
-        
+            matchProper = lm.binary_thresh(match,binary_thresh)
+              
         # Obtain indices of intra-frame matches.
         in1 = np.array([matchProper[j].queryIdx 
                         for j in range(len(matchProper))],dtype='int')
@@ -158,7 +156,7 @@ def motion_tracking(filepath,frames,study,featureType,estMethod,P1,P2,fc1,fc2,
             pEst = [0,0,0,0,0,0]
 
         elif estMethod == 'Horn':
-            frameIdx, dbIdx = lm.dbmatch3D(frameDes,dbDes,featureType)
+            frameIdx, dbIdx = lm.dbmatch3D(frameDes,dbDes,featureType,binary_thresh)
             # Horn's method needs at least 3 points in each frame.
             if (len(frameIdx) >= 3 and len(dbIdx) >= 3):
                 framePos_matched = framePos[frameIdx]
@@ -176,7 +174,7 @@ def motion_tracking(filepath,frames,study,featureType,estMethod,P1,P2,fc1,fc2,
         
         elif estMethod == 'GN':
             indb1, dbm1, indb2, dbm2 = lm.dbmatch(des1,des2,
-                                                  dbDes,featureType)
+                                                  dbDes,featureType,binary_thresh)
 	
         # Estimate pose. Points in frameDes that are not matched with landmarks in
         # the database are added to database.
@@ -328,7 +326,7 @@ if __name__ == '__main__':
         for featureType in featureTypes:
         
             for estMethod in estMethods:
-                pList, lms_record, process_time = motion_tracking(imgPath,frames,study,featureType,estMethod,P1,P2,fc1,fc2,pp1,pp2,kk1,kk2,kp1,kp2,Tr1,Tr2)
+                pList, lms_record, process_time = motion_tracking(imgPath,frames,study,featureType,estMethod,20,P1,P2,fc1,fc2,pp1,pp2,kk1,kk2,kp1,kp2,Tr1,Tr2)
                 data_array = np.hstack((pList,lms_record))
                 file_path = output_path + study + r'/'
                 filename = file_path + 'data_{0}_{1}_{2}.txt'.format(study,featureType,estMethod)
