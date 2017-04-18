@@ -48,7 +48,7 @@ def binary_thresh(matches,threshold):
     
     return matches_new
 
-def dbmatch(des1,des2,db,fType,*threshold):
+def dbmatch(des1,des2,db,fType,threshold):
 # Database matching for features detected in individual cameras. This function
 # is used in conjunction with GN pose estimation, while dbmatch3D is used when
 # Horn's method is used to estimate pose.
@@ -101,7 +101,7 @@ def dbmatch(des1,des2,db,fType,*threshold):
     
     return indb1, dbm1, indb2, dbm2
 
-def dbmatch3D(frameDes,db,fType,*threshold):
+def dbmatch3D(frameDes,db,fType,threshold):
 # Database matching for feature points that have been triangulated before
 # matching.
 # Note: Different features such as SURF features may have different descriptor
