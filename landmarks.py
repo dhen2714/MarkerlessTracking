@@ -265,6 +265,9 @@ def GN_estimation(P1,P2,uv1m,uv2m,dbc1,dbc2,pose,iter_n=10,olThold=2):
                     Joutliers = np.array([2*absOutliers,(2*absOutliers+1)]).flatten()
                     J1 = np.delete(J1,Joutliers,axis=0)
                     n1 = n1 - len(absOutliers)
+        else:
+            J1 = np.array([])
+            n1 = 0
         
         if dbc2.size:
             uv2e = cg.mdot(P2,H_i,dbc2.T)
@@ -290,24 +293,28 @@ def GN_estimation(P1,P2,uv1m,uv2m,dbc1,dbc2,pose,iter_n=10,olThold=2):
                     Joutliers = np.array([2*absOutliers,(2*absOutliers+1)]).flatten()
                     J2 = np.delete(J2,Joutliers,axis=0)
                     n2 = n2 - len(absOutliers)
+        else:
+            J2 = np.array([])
+            n2 = 0
                 
         if n1 + n2 < 3:
             print("Cannot estimate pose from this frame, return last pose.")
             n_points = 0
             flag = -1
             return p_init, flag
-            
-        e1 = (uv1e[:2,:] - uv1m).flatten(order='F')
-        e2 = (uv2e[:2,:] - uv2m).flatten(order='F')
         
         if J1.size and J2.size:
             J = np.concatenate((J1,J2),axis=0)
+            e1 = (uv1e[:2,:] - uv1m).flatten(order='F')
+            e2 = (uv2e[:2,:] - uv2m).flatten(order='F')
             e = np.concatenate((e1,e2))
         elif J1.size:
             J = J1
+            e1 = (uv1e[:2,:] - uv1m).flatten(order='F')
             e = e1
         elif J2.size:
             J = J2
+            e2 = (uv2e[:2,:] - uv2m).flatten(order='F')
             e = e2
         
         A = np.dot(J.T,J)
