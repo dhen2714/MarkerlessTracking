@@ -77,10 +77,10 @@ def dbmatch(des1,des2,db,fType,*threshold):
         m2 = bf.knnMatch(des2,db,k=2)
         
         for m, n in m1:
-            if m.distance < 0.6*n.distance:
+            if m.distance < threshold*n.distance:
                 matches1.append(m)
         for m, n in m2:
-            if m.distance < 0.6*n.distance:
+            if m.distance < threshold*n.distance:
                 matches2.append(m)
                 
         matches1 = remove_duplicates(np.array(matches1))
@@ -127,7 +127,7 @@ def dbmatch3D(frameDes,db,fType,*threshold):
         matches = bf.knnMatch(frameDes,db,k=2)
 
         for m, n in matches:
-            if m.distance < 0.6*n.distance:
+            if m.distance < threshold*n.distance:
                 matchProper.append(m)
     
         matchProper = remove_duplicates(np.array(matchProper))
