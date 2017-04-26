@@ -43,17 +43,25 @@ def motion_tracking(filepath,frames,study,featureType,estMethod,matching_param,
 #     Tr1 & Tr2: 3x3 rectifying transforms.
 # Outputs:
 #     pList: Nx6 array of poses, where N is the number of frames processed.
-#     pList: Nx6 array of poses, where N is the number of frames processed.
 #     lms_record: Nx3 array, the first column is a record of the number of 
 #     landmarks in the database, the second column is the number of 
 #     features/points used in the calculation of the pose estimate. The third
 #     column is a series of 0 or -1 depending on whether or not the pose
 #     estimation was successful or within reason for that frame.
+#     counts: Nx5 array. First two columns are the number of keypoints detected
+#     by each camera, third column is number of intra-frame matches, fourth
+#     column is number of points used to estimate pose, fifth is the number of
+#     landmarks in database.
+#     timings: Nx4 array. First column is time taken for feature detection and
+#     extraction for both cameras. Second column is time taken for intra-frame
+#     matching. Third column is time taken for database matching. Fourth column
+#     is time taken for pose estimation.
 #     process_time: Processing time.
 
     n_frames = len(frames)
     pList = np.zeros((n_frames,6))
-    lms_record = np.zeros((n_frames,3))
+    counts = np.zeros((n_frames,5))
+    timings = np.zeros((n_frames,4))
     
     # Initialize matcher, brute force matcher in this case.
     if featureType in ['sift','surf']:
@@ -83,13 +91,18 @@ def motion_tracking(filepath,frames,study,featureType,estMethod,matching_param,
     for frame in frames:
     
         print("Processing {}, frame number {}...\n".format(study,frame))
+        
         img1 = cv2.imread(filepath+r'/'+study+r'/'+
                           'cam769_pos{}.pgm'.format(frame),0)
         img2 = cv2.imread(filepath+r'/'+study+r'/'+
                           'cam802_pos{}.pgm'.format(frame),0)
            
+        det_time_start = time.perf_counter()
         (key1, des1) = fT.detectAndCompute(img1,None)
+        n_key1 = len(key1)
         (key2, des2) = fT.detectAndCompute(img2,None)
+        n_key2 = len(key2)
+        det_time = time.perf_counter() - det_time_start
         
         # Length of descriptor is dependent on feature type.
         des_len = des1.shape[1]
@@ -107,6 +120,7 @@ def motion_tracking(filepath,frames,study,featureType,estMethod,matching_param,
         # Intra-frame matching - create a list of 'DMatch' objects, which can 
         # be queried to obtain matched keypoint indices and their 
         # spatial positions.
+        fmatch_time_start = time.perf_counter()
         if featureType in ['sift','surf']:
             match = bf.knnMatch(des1,des2,k=2)
             matchProper = []
@@ -121,6 +135,8 @@ def motion_tracking(filepath,frames,study,featureType,estMethod,matching_param,
         # For ORB and BRISK.
             match = bf.match(des1,des2)
             matchProper = lm.binary_thresh(match,matching_param)
+        # Time taken for intra-frame matching.
+        fmatch_time = time.perf_counter() - fmatch_time_start
               
         # Obtain indices of intra-frame matches.
         in1 = np.array([matchProper[j].queryIdx 
@@ -130,6 +146,7 @@ def motion_tracking(filepath,frames,study,featureType,estMethod,matching_param,
                     
         # Remove indices that don't satisfy epipolar constraint.
         inepi = cg.epipolar_constraint(c1px[in1],c2px[in2],Tr1,Tr2)
+        n_fmatch = len(inepi)
         in1 = in1[inepi]
         in2 = in2[inepi]
     
@@ -159,9 +176,15 @@ def motion_tracking(filepath,frames,study,featureType,estMethod,matching_param,
             dbPos_matched = dbPos
             dbDes_matched = dbDes
             pEst = [0,0,0,0,0,0]
+            n_est = 0
+            n_lms = dbPos.shape[0]
+            dbmatch_time = 0
+            est_time = 0
 
         elif estMethod == 'Horn':
+            dbmatch_time_start = time.perf_counter()
             frameIdx, dbIdx = lm.dbmatch3D(frameDes,dbDes,featureType,matching_param)
+            dbmatch_time = time.perf_counter() - dbmatch_time_start
             # Horn's method needs at least 3 points in each frame.
             if (len(frameIdx) >= 3 and len(dbIdx) >= 3):
                 framePos_matched = framePos[frameIdx]
@@ -171,21 +194,33 @@ def motion_tracking(filepath,frames,study,featureType,estMethod,matching_param,
             else: 
                 print("Not enough matches with database, returning previous pose.\n")
                 pList[i,:] = pEst
-                lms_record[i,0] = dbPos.shape[0]
-                lms_record[i,1] = 0
-                lms_record[i,2] = -1
+                n_est = 0
+                n_lms = dbPos.shape[0]
+                counts[i,0] = n_key1
+                counts[i,1] = n_key2
+                counts[i,2] = n_fmatch
+                counts[i,3] = n_est
+                counts[i,4] = n_lms
+                timings[i,0] = det_time
+                timings[i,1] = fmatch_time
+                timings[i,2] = dbmatch_time
+                timings[i,3] = 0
                 i += 1
                 continue
         
         elif estMethod == 'GN':
+            dbmatch_time_start = time.perf_counter()
             indb1, dbm1, indb2, dbm2 = lm.dbmatch(des1,des2,
                                                   dbDes,featureType,matching_param)
+            # Time taken for database matching.
+            dbmatch_time = time.perf_counter() - dbmatch_time_start
 	
         # Estimate pose. Points in frameDes that are not matched with landmarks in
         # the database are added to database.
         if i != 0:
         
             if estMethod == 'Horn':
+                est_time_start = time.perf_counter()
                 H = cg.hornmm(framePos_matched,dbPos_matched)
                 pEst = cg.mat2vec(H)
                 # Outlier removal.
@@ -196,11 +231,15 @@ def motion_tracking(filepath,frames,study,featureType,estMethod,matching_param,
                 framePos_matched = np.delete(framePos_matched,outliers,axis=0)
                 H = cg.hornmm(framePos_matched,
                             np.delete(dbPos_matched,outliers,axis=0))
+                            
+                # Time taken to estimate pose using Horn's method.
+                est_time = time.perf_counter() - est_time_start
+                
                 dbPos = np.delete(dbPos,dbIdx[outliers],axis=0)
                 dbDes = np.delete(dbDes,dbIdx[outliers],axis=0)
             
                 # Record number of points used to estimate pose.
-                lms_record[i,1] = framePos_matched.shape[0]
+                n_est = framePos_matched.shape[0]
                 pflag = 0
             
                 # Add new entries to database:
@@ -213,6 +252,7 @@ def motion_tracking(filepath,frames,study,featureType,estMethod,matching_param,
             if estMethod == 'GN':
                 # In the case of no matches with database, indb1 or indb2 will be
                 # empty, which would cause error if called as indices.
+                est_time_start = time.perf_counter()
                 if (len(indb1) and len(indb2)):
                     pEst, n_est, pflag = lm.GN_estimation(P1,P2,c1px[indb1,:],
                                                 c2px[indb2,:],dbPos[dbm1,:],
@@ -231,10 +271,7 @@ def motion_tracking(filepath,frames,study,featureType,estMethod,matching_param,
                     print("No matches with database, returning previous pose.\n")
                 
                 H = cg.vec2mat(pEst)
-            
-                # Record number of points used to estimate pose.
-                lms_record[i,1] = n_est
-                lms_record[i,2] = pflag
+                est_time = time.perf_counter() - est_time_start
             
                 lmInd = []
                 # Add new entries to database:
@@ -247,14 +284,26 @@ def motion_tracking(filepath,frames,study,featureType,estMethod,matching_param,
                     framePos_new = cg.mdot(np.linalg.inv(H),framePos_new.T).T
                     dbPos = np.append(dbPos,framePos_new,axis=0)
                     dbDes = np.append(dbDes,frameDes_new,axis=0)
+                    
+        # Record landmark information.
+        n_lms = dbPos.shape[0]
+        
+        counts[i,0] = n_key1
+        counts[i,1] = n_key2
+        counts[i,2] = n_fmatch
+        counts[i,3] = n_est
+        counts[i,4] = n_lms
+        
+        # Record timing information.
+        timings[i,0] = det_time
+        timings[i,1] = fmatch_time
+        timings[i,2] = dbmatch_time
+        timings[i,3] = est_time
 
         print("Pose estimate for frame {} of {} is:\n {} \n".format(frame,study,pEst))
         pList[i,:] = pEst
-
-        nlm = dbPos.shape[0]
-        lms_record[i,0] = nlm
     
-        print("{} landmarks in database.\n".format(nlm))
+        print("{} landmarks in database.\n".format(n_lms))
 
         # Update iteration number
         i += 1
@@ -263,7 +312,7 @@ def motion_tracking(filepath,frames,study,featureType,estMethod,matching_param,
     
     print("Time taken to process study {}: {}\n\n".format(study,process_time))
     
-    return pList, lms_record, process_time
+    return pList, counts, timings, process_time
 
     
 if __name__ == '__main__':
@@ -337,8 +386,8 @@ if __name__ == '__main__':
                 matching_param = 0.6
         
             for estMethod in estMethods:
-                pList, lms_record, process_time = motion_tracking(imgPath,frames,study,featureType,estMethod,matching_param,P1,P2,fc1,fc2,pp1,pp2,kk1,kk2,kp1,kp2,Tr1,Tr2)
-                data_array = np.hstack((pList,lms_record))
+                pList, lms_record, timings, process_time = motion_tracking(imgPath,frames,study,featureType,estMethod,matching_param,P1,P2,fc1,fc2,pp1,pp2,kk1,kk2,kp1,kp2,Tr1,Tr2)
+                data_array = np.hstack((pList,lms_record,timings))
                 file_path = output_path + study + r'/'
                 filename = file_path + 'data_{0}_{1}_{2}.txt'.format(study,featureType,estMethod)
                 Header = 'Study: {}\nFeatures: {}\nPoses processed: {}'.format(study,featureType,frames)
