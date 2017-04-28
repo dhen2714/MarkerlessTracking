@@ -48,7 +48,7 @@ def binary_thresh(matches,threshold):
     
     return matches_new
 
-def dbmatch(des1,des2,db,fType,threshold):
+def dbmatch(des1,des2,db,threshold):
 # Database matching for features detected in individual cameras. This function
 # is used in conjunction with GN pose estimation, while dbmatch3D is used when
 # Horn's method is used to estimate pose.
@@ -71,27 +71,20 @@ def dbmatch(des1,des2,db,fType,threshold):
     matches1 = []
     matches2 = []
     
-    if fType in ['sift','surf']:
-        bf = cv2.BFMatcher()
-        m1 = bf.knnMatch(des1,db,k=2)
-        m2 = bf.knnMatch(des2,db,k=2)
+    bf = cv2.BFMatcher()
+    m1 = bf.knnMatch(des1,db,k=2)
+    m2 = bf.knnMatch(des2,db,k=2)
         
-        for m, n in m1:
-            if m.distance < threshold*n.distance:
-                matches1.append(m)
-        for m, n in m2:
-            if m.distance < threshold*n.distance:
+    for m, n in m1:
+        if m.distance < threshold*n.distance:
+            matches1.append(m)
+    for m, n in m2:
+        if m.distance < threshold*n.distance:
                 matches2.append(m)
                 
-        matches1 = remove_duplicates(np.array(matches1))
-        matches2 = remove_duplicates(np.array(matches2))
-    else:
-        bf = cv2.BFMatcher(cv2.NORM_HAMMING,crossCheck=True)
-        m1 = bf.match(des1,db)
-        m2 = bf.match(des2,db)
-        matches1 = binary_thresh(m1,threshold)
-        matches2 = binary_thresh(m2,threshold)
-    
+    matches1 = remove_duplicates(np.array(matches1))
+    matches2 = remove_duplicates(np.array(matches2))
+
     # Indices of cameras 1 and 2 features that have been matched with database.
     indb1 = np.array([matches1[j].queryIdx for j in range(len(matches1))])
     indb2 = np.array([matches2[j].queryIdx for j in range(len(matches2))])
@@ -101,7 +94,7 @@ def dbmatch(des1,des2,db,fType,threshold):
     
     return indb1, dbm1, indb2, dbm2
 
-def dbmatch3D(frameDes,db,fType,threshold):
+def dbmatch3D(frameDes,db,threshold):
 # Database matching for feature points that have been triangulated before
 # matching.
 # Note: Different features such as SURF features may have different descriptor
@@ -122,19 +115,15 @@ def dbmatch3D(frameDes,db,fType,threshold):
     frameIdx = []
     dbIdx = []
 
-    if fType in ['sift','surf']:
-        bf = cv2.BFMatcher()
-        matches = bf.knnMatch(frameDes,db,k=2)
+    bf = cv2.BFMatcher()
+    matches = bf.knnMatch(frameDes,db,k=2)
 
-        for m, n in matches:
-            if m.distance < threshold*n.distance:
-                matchProper.append(m)
+    for m, n in matches:
+        if m.distance < threshold*n.distance:
+            matchProper.append(m)
     
-        matchProper = remove_duplicates(np.array(matchProper))
-    else:
-        bf = cv2.BFMatcher(cv2.NORM_HAMMING,crossCheck=True)
-        match = bf.match(frameDes,db)
-        matchProper = binary_thresh(match,threshold)
+    matchProper = remove_duplicates(np.array(matchProper))
+
        
     frameIdx = np.array([matchProper[j].queryIdx 
                          for j in range(len(matchProper))])

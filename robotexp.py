@@ -62,7 +62,7 @@ def handle_args(args):
 def handle_args_v2(args):
     studyOptions = ['all','yidi_nostamp','yidi_stamp1','yidi_stamp2',
                     'andre_nostamp','andre_stamp1','andre_stamp2']
-    detOptions = ['all','sift','surf','brisk','orb']
+    detOptions = ['all','sift','surf','brisk','orb','akaze']
     estOptions = ['all','GN','Horn']
     
     if len(args) != 4:

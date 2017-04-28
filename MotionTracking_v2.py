@@ -6,7 +6,7 @@ python MotionTracking_v2.py study detector estmethod
 
 study: [all,yidi_nostamp,yidi_stamp1,yidi_stamp2,
         andre_nostamp,andre_stamp1,andre_stamp2]
-detector: [all,sift,surf,brisk,orb]
+detector: [all,sift,surf,brisk,orb,akaze]
 estmethod: [all,GN, Horn]
 
 The 'all' option loops over all studies and/or detectors.
@@ -30,11 +30,8 @@ def motion_tracking(filepath,frames,study,featureType,estMethod,matching_param,
 #     study: The study, e.g. yidi_nostamp
 #     featureType: The feature/descriptor to use.
 #     estMethod: For pose estimation, either GN or Horn.
-#     matching_param: Matching parameter. For SIFT and SURF, this parameter is 
-#     the value of beta used in the ratio test. For ORB and BRISK, it is the
-#     Hamming distance above which matches will be rejected. 0.6 is a good
-#     value for SIFT, SURF. 40 & 50 are good values for ORB and BRISK
-#     respectively.
+#     matching_param: Matching parameter. This parameter is the value of beta 
+#     used in the ratio test.
 #     P1 & P2: Camera matrices.
 #     fc1 & fc2: Focal points.
 #     pp1 & pp2: Principal points.
@@ -63,18 +60,10 @@ def motion_tracking(filepath,frames,study,featureType,estMethod,matching_param,
     counts = np.zeros((n_frames,5))
     timings = np.zeros((n_frames,4))
     
-    # Initialize matcher, brute force matcher in this case.
-    if featureType in ['sift','surf']:
-    # For SIFT and SURF, use nearest neighbour matching and L2 NORM.
-        bf = cv2.BFMatcher(cv2.NORM_L2)
-        desType = np.float32
-    else:
-    # ORB and BRISK use binary descriptors, use HAMMING norm instead of L2.
-    # crossCheck makes sure matches are mutually the best for each set of
-    # keypoints.
-        bf = cv2.BFMatcher(cv2.NORM_HAMMING,crossCheck=True)
-        desType = np.uint8
-        
+    # Initiate matcher.
+    bf = cv2.BFMatcher(cv2.NORM_L2)
+    desType = np.float32
+    
     if featureType == 'sift':
         fT = cv2.xfeatures2d.SIFT_create()
     elif featureType == 'surf':
@@ -82,7 +71,9 @@ def motion_tracking(filepath,frames,study,featureType,estMethod,matching_param,
     elif featureType == 'brisk':
         fT = cv2.BRISK_create()
     elif featureType == 'orb':
-        fT = cv2.ORB_create()
+        fT = cv2.ORB_create(3000)
+    elif featureType == 'akaze':
+        fT = cv2.AKAZE_create()
 
     start = time.perf_counter()
     i = 0 # Iteration number. This may not necessarily be the same as frame.
@@ -121,20 +112,15 @@ def motion_tracking(filepath,frames,study,featureType,estMethod,matching_param,
         # be queried to obtain matched keypoint indices and their 
         # spatial positions.
         fmatch_time_start = time.perf_counter()
-        if featureType in ['sift','surf']:
-            match = bf.knnMatch(des1,des2,k=2)
-            matchProper = []
+        match = bf.knnMatch(des1,des2,k=2)
+        matchProper = []
             
-            for m, n in match:
-                if m.distance < matching_param*n.distance:
-                    matchProper.append(m)
+        for m, n in match:
+            if m.distance < matching_param*n.distance:
+                matchProper.append(m)
                         
         # Remove duplicate (unreliable) matches.
-            matchProper = lm.remove_duplicates(np.array(matchProper))
-        else:
-        # For ORB and BRISK.
-            match = bf.match(des1,des2)
-            matchProper = lm.binary_thresh(match,matching_param)
+        matchProper = lm.remove_duplicates(np.array(matchProper))
         # Time taken for intra-frame matching.
         fmatch_time = time.perf_counter() - fmatch_time_start
               
@@ -183,7 +169,7 @@ def motion_tracking(filepath,frames,study,featureType,estMethod,matching_param,
 
         elif estMethod == 'Horn':
             dbmatch_time_start = time.perf_counter()
-            frameIdx, dbIdx = lm.dbmatch3D(frameDes,dbDes,featureType,matching_param)
+            frameIdx, dbIdx = lm.dbmatch3D(frameDes,dbDes,matching_param)
             dbmatch_time = time.perf_counter() - dbmatch_time_start
             # Horn's method needs at least 3 points in each frame.
             if (len(frameIdx) >= 3 and len(dbIdx) >= 3):
@@ -211,7 +197,7 @@ def motion_tracking(filepath,frames,study,featureType,estMethod,matching_param,
         elif estMethod == 'GN':
             dbmatch_time_start = time.perf_counter()
             indb1, dbm1, indb2, dbm2 = lm.dbmatch(des1,des2,
-                                                  dbDes,featureType,matching_param)
+                                                  dbDes,matching_param)
             # Time taken for database matching.
             dbmatch_time = time.perf_counter() - dbmatch_time_start
 	
@@ -378,12 +364,8 @@ if __name__ == '__main__':
             frames = frames_as2
         
         for featureType in featureTypes:
-            if featureType == 'brisk':
-                matching_param = 50
-            elif featureType == 'orb':
-                matching_param = 40
-            else:
-                matching_param = 0.6
+        
+            matching_param = 0.6
         
             for estMethod in estMethods:
                 pList, lms_record, timings, process_time = motion_tracking(imgPath,frames,study,featureType,estMethod,matching_param,P1,P2,fc1,fc2,pp1,pp2,kk1,kk2,kp1,kp2,Tr1,Tr2)
