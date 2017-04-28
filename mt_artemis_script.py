@@ -34,7 +34,9 @@ if __name__ == '__main__':
     kp1 = np.array([0.00329, -0.00263]) # Tangential distortion
     kp2 = np.array([0.00115, -0.00274])
     
-    studies, featureTypes, estMethods = robotexp.handle_args_v2(sys.argv)
+    studies = ['yidi_nostamp','yidi_stamp1','yidi_stamp2','andre_nostamp','andre_stamp1','andre_stamp2']
+    featureTypes = ['sift','surf','orb','brisk','akaze']
+    estMethods = ['Horn','GN']
     
     # Rectify for outlier removal with epipolar constraint.
     Prec1,Prec2,Tr1,Tr2 = cg.rectify_fusiello(P1,P2)
