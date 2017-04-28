@@ -4,6 +4,7 @@ MotionTracking_v2.py script for use on Artemis.
 """
 import sys
 sys.path.insert(1,r'/project/RDS-FEI-MRI_MT-RW/David/Software/MarkerlessTracking')
+import MotionTracking_v2 as mt
 import numpy as np
 import cv2
 import camerageometry as cg
@@ -78,7 +79,7 @@ if __name__ == '__main__':
             matching_param = 0.6
         
             for estMethod in estMethods:
-                pList, lms_record, timings, process_time = motion_tracking(imgPath,frames,study,featureType,estMethod,matching_param,P1,P2,fc1,fc2,pp1,pp2,kk1,kk2,kp1,kp2,Tr1,Tr2)
+                pList, lms_record, timings, process_time = mt.motion_tracking(imgPath,frames,study,featureType,estMethod,matching_param,P1,P2,fc1,fc2,pp1,pp2,kk1,kk2,kp1,kp2,Tr1,Tr2)
                 data_array = np.hstack((pList,lms_record,timings))
                 file_path = output_path + study + r'/'
                 filename = file_path + 'data_{0}_{1}_{2}.txt'.format(study,featureType,estMethod)
