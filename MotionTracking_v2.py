@@ -345,7 +345,7 @@ if __name__ == '__main__':
     frames_as2 = np.arange(30)
     valid_frames = [frames_yns,frames_ys1,frames_ys2,frames_ans,frames_as1,frames_as2]
     
-    output_path = r'C:/Users/dhen2714/Documents/PHD/Experiments/YidiRobotExp/Results/Test/'
+    output_path = r'C:/Users/dhen2714/Documents/PHD/Experiments/YidiRobotExp/Results/20170428_Results/'
     
     tot_start = time.perf_counter()
     for study in studies:
