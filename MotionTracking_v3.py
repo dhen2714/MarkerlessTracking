@@ -95,6 +95,10 @@ class landmark_database:
     def update(self,X,descriptors):
         self.landmarks = np.vstack((self.landmarks,X))
         self.descriptors = np.vstack((self.descriptors,descriptors))
+        
+    def trim(self,indices):
+        self.landmarks = np.delete(self.landmarks,indices,axis=0)
+        self.descriptors = np.delete(self.descriptors,indices,axis=0)
 
 def calc_pose_Horn(X,descriptors,database,prev_pose,ratioTest=True):
     """Estimate pose using Horn's method."""
@@ -115,9 +119,8 @@ def calc_pose_Horn(X,descriptors,database,prev_pose,ratioTest=True):
         X_matched = np.delete(X_matched,outliers,axis=0)
         H = cg.hornmm(X_matched,
                     np.delete(dbPos_matched,outliers,axis=0))
-        database.landmarks = np.delete(dbPos,dbIdx[outliers],axis=0)
-        database.descriptors = np.delete(dbDes,dbIdx[outliers],axis=0)
-        
+        database.trim(dbIdx[outliers])
+
         # Add new entries to database.
         X_new = np.delete(X,[frameIdx],axis=0)
         descriptors_new = np.delete(descriptors,[frameIdx],axis=0)
