@@ -21,14 +21,15 @@ import landmarks as lm
 import robotexp
 import time
 
-def load_image(cam=1,frame=0,imgPath=r'C:/Users/dhen2714/Documents/PHD/'+
-               r'Experiments/YidiRobotExp/robot_experiment/images')):
+def load_image(cam=1,study='yidi_nostamp',frame=0,
+               imgPath=r'C:/Users/dhen2714/Documents/PHD/'+
+               r'Experiments/YidiRobotExp/robot_experiment/images/')):
     if cam == 1:
         cam_name = 'cam769_pos{}.pgm'.format(frame)
     elif cam == 2:
         cam_name = 'cam802_pos{}.pgm'.format(frame)
         
-    img = cv2.imread(imgPath+r'/'+cam_name,0)
+    img = cv2.imread(imgPath+study+r'/'+cam_name,0)
     
     return img
 
@@ -99,11 +100,17 @@ class landmark_database:
     def trim(self,indices):
         self.landmarks = np.delete(self.landmarks,indices,axis=0)
         self.descriptors = np.delete(self.descriptors,indices,axis=0)
+        
+    def num_elements(self):
+        return len(self.landmarks)
+        
 
 def calc_pose_Horn(X,descriptors,database,prev_pose,ratioTest=True):
     """Estimate pose using Horn's method."""
+    # Database matching.
     frameIdx, dbIdx = matched_indices(descriptors,database.descriptors,ratioTest)
     
+    # Pose estimation.
     if (len(frameIdx) >= 3 and len(dbIdx) >= 3):
         X_matched = X[frameIdx]
         descriptors_matched = descriptors[frameIdx]
@@ -132,13 +139,65 @@ def calc_pose_Horn(X,descriptors,database,prev_pose,ratioTest=True):
 
     return pose_est, database
     
+def calc_pose_GN(c1px,c2px,d1,d2,database,prev_pose,X,in1,in2,
+                 P1,P2,ratioTest=True):
+    """Estimate pose using GN iterations."""
+    # Database matching.
+    fIdx1, dbIdx1 = matched_indices(d1,database.descriptors,ratioTest)
+    fIdx2, dbIdx2 = matched_indices(d2,database.descriptors,ratioTest)
+    
+    # Pose estimation.
+    if (len(fIdx1) and len(lenfIdx2)):
+        pose_est, n_est, pflag = lm.GN_estimation(
+                                 P1,P2,
+                                 c1px[fIdx1,:],
+                                 c2px[fIdx2,:],
+                                 database.landmarks[dbIdx1,:],
+                                 database.landmarks[dbIdx2,:],
+                                 prev_pose)
+    elif len(indb1):
+        pose_est, n_est, pflag = lm.GN_estimation(
+                                 P1,P2,
+                                 c1px[fIdx1,:],
+                                 np.array([]),
+                                 database.landmarks[dbIdx1,:],
+                                 np.array([]),
+                                 prev_pose)
+    elif len(indb2):
+        pose_est, n_est, pflag = lm.GN_estimation(
+                                 P1,P2,
+                                 np.array([]),
+                                 c2px[fIdx2,:],
+                                 np.array([]),
+                                 database.landmarks[dbIdx2,:],
+                                 prev_pose)
+    else:
+        pflag = -1
+        n_est = 0
+        print("No matches with database, returning previous pose.\n")
+        
+    H = cg.vec2mat(pose_est)
+    # Add new entries to database.
+    new_lms =[]
+    if pflag == 0:
+        for j in range(len(in1)):
+            if (in1[j] not in fIdx1) and (in2[j] not in fIdx2):
+                new_lms.append(j)
+                
+        X_new = X[new_lms,:]
+        descriptors_new = d1[new_lms,:]
+        X_new = cg.mdot(np.linalg.inv(H),X_new.T).T
+        database.update(X_new,descriptors_new)
+        
+    return pose_est, database
+
 def process_frame(frame,prev_pose,study,detectorType,descriptorType,estMethod,
                   database,ratioTest=True,
                   P1,P2,fc1,fc2,pp1,pp2,kk1,kk2,kp1,kp2,Tr1,Tr2):
-    """Output pose estimate from the current frame."""
+    """Output pose estimate for the current frame."""
     print("Processing {}, frame number {}...\n".format(study,frame))
-    img1 = load_image(1,frame)
-    img2 = load_image(2,frame)
+    img1 = load_image(1,study,frame)
+    img2 = load_image(2,study,frame)
 
     k1, d1 = get_keypoints_descriptors(img1,detectorType,descriptorType)
     k2, d2 = get_keypoints_descriptors(img2,detectorType,descriptorType)
@@ -164,82 +223,14 @@ def process_frame(frame,prev_pose,study,detectorType,descriptorType,estMethod,
     elif estMethod == 'Horn':
         pose_est, database = calc_pose_Horn(X,d1[in1],database,prev_pose,ratioTest)
     elif estMethod == 'GN':
+        pose_est, database = calc_pose_GN(c1px,c2px,d1,d2,database,prev_pose,
+                                          X,in1,ind2,P1,P2,ratioTest)
 
-              
-
-
-
-        
-        elif estMethod == 'GN':
-            dbmatch_time_start = time.perf_counter()
-            indb1, dbm1, indb2, dbm2 = lm.dbmatch(des1,des2,
-                                                  dbDes,matching_param)
-            # Time taken for database matching.
-            dbmatch_time = time.perf_counter() - dbmatch_time_start
-	
-        # Estimate pose. Points in frameDes that are not matched with landmarks in
-        # the database are added to database.
-        if i != 0:
-        
-        
-            if estMethod == 'GN':
-                # In the case of no matches with database, indb1 or indb2 will be
-                # empty, which would cause error if called as indices.
-                est_time_start = time.perf_counter()
-                if (len(indb1) and len(indb2)):
-                    pEst, n_est, pflag = lm.GN_estimation(P1,P2,c1px[indb1,:],
-                                                c2px[indb2,:],dbPos[dbm1,:],
-                                                dbPos[dbm2,:],pEst)
-                elif len(indb1):
-                    pEst, n_est, pflag = lm.GN_estimation(P1,P2,c1px[indb1,:],
-                                                np.array([]),dbPos[dbm1,:],
-                                                np.array([]),pEst)
-                elif len(indb2):
-                    pEst, n_est, pflag = lm.GN_estimation(P1,P2,np.array([]),
-                                                c2px[indb2,:],np.array([]),
-                                                dbPos[dbm2,:],pEst)
-                else:
-                    pflag = -1
-                    n_est = 0
-                    print("No matches with database, returning previous pose.\n")
-                
-                H = cg.vec2mat(pEst)
-                est_time = time.perf_counter() - est_time_start
-            
-                lmInd = []
-                # Add new entries to database:
-                if pflag == 0:
-                    for j in range(len(in1)):
-                        if (in1[j] not in indb1) and (in2[j] not in indb2):
-                            lmInd.append(j)
-                    framePos_new = framePos[lmInd,:]
-                    frameDes_new = frameDes[lmInd,:]
-                    framePos_new = cg.mdot(np.linalg.inv(H),framePos_new.T).T
-                    dbPos = np.append(dbPos,framePos_new,axis=0)
-                    dbDes = np.append(dbDes,frameDes_new,axis=0)
-                    
-        # Record landmark information.
-        n_lms = dbPos.shape[0]
-        
-        counts[i,0] = n_key1
-        counts[i,1] = n_key2
-        counts[i,2] = n_fmatch
-        counts[i,3] = n_est
-        counts[i,4] = n_lms
-        
-        # Record timing information.
-        timings[i,0] = det_time
-        timings[i,1] = fmatch_time
-        timings[i,2] = dbmatch_time
-        timings[i,3] = est_time
-
-        print("Pose estimate for frame {} of {} is:\n {} \n".format(frame,study,pEst))
-        pList[i,:] = pEst
+    print("Pose estimate for frame {} of {} is:\n {} \n".format(frame,study,pose_est))
     
-        print("{} landmarks in database.\n".format(n_lms))
+    print("{} landmarks in database.\n".format(database.num_elements()))
 
-        # Update iteration number
-        i += 1
+    return pose_est, database
 
 def main(filepath,frames,study,detectorType,descriptorType,estMethod,
                     P1,P2,fc1,fc2,pp1,pp2,kk1,kk2,kp1,kp2,Tr1,Tr2):
@@ -276,239 +267,31 @@ def main(filepath,frames,study,detectorType,descriptorType,estMethod,
 #     process_time: Processing time.
 
     n_frames = len(frames)
-    pList = np.zeros((n_frames,6))
+    poses = np.zeros((n_frames,6))
     counts = np.zeros((n_frames,5))
     timings = np.zeros((n_frames,4))
     
-    # Initiate matcher.
-    bf = cv2.BFMatcher(cv2.NORM_L2)
-    desType = np.float32
-
-    start = time.perf_counter()
     i = 0 # Iteration number. This may not necessarily be the same as frame.
     
+    # Initiate pose and database.
+    pose_est = np.zeros(6)
+    database = landmark_database()
+    
+    start = time.perf_counter()
     # Main loop.
     for frame in frames:
-    
-        print("Processing {}, frame number {}...\n".format(study,frame))
-        
-        img1 = cv2.imread(filepath+r'/'+study+r'/'+
-                          'cam769_pos{}.pgm'.format(frame),0)
-        img2 = cv2.imread(filepath+r'/'+study+r'/'+
-                          'cam802_pos{}.pgm'.format(frame),0)
-           
-        det_time_start = time.perf_counter()
-        (key1, des1) = fT.detectAndCompute(img1,None)
-        n_key1 = len(key1)
-        (key2, des2) = fT.detectAndCompute(img2,None)
-        n_key2 = len(key2)
-        det_time = time.perf_counter() - det_time_start
-        
-        # Length of descriptor is dependent on feature type.
-        des_len = des1.shape[1]
-    
-        # Assembling arrays of pixel coords for keypoints in current frame. 
-        c1px = np.zeros((len(key1),2),dtype=np.float32)
-        c2px = np.zeros((len(key2),2),dtype=np.float32)
-        c1px[:,:] = np.array([key1[j].pt for j in range(len(key1))])
-        c2px[:,:] = np.array([key2[j].pt for j in range(len(key2))])
-
-        # Correct for distortion.
-        c1px = cg.correct_dist(c1px,fc1,pp1,kk1,kp1)
-        c2px = cg.correct_dist(c2px,fc2,pp2,kk2,kp2)
-
-        # Intra-frame matching - create a list of 'DMatch' objects, which can 
-        # be queried to obtain matched keypoint indices and their 
-        # spatial positions.
-        fmatch_time_start = time.perf_counter()
-        match = bf.knnMatch(des1,des2,k=2)
-        matchProper = []
-            
-        for m, n in match:
-            if m.distance < matching_param*n.distance:
-                matchProper.append(m)
-                        
-        # Remove duplicate (unreliable) matches.
-        matchProper = lm.remove_duplicates(np.array(matchProper))
-        # Time taken for intra-frame matching.
-        fmatch_time = time.perf_counter() - fmatch_time_start
-              
-        # Obtain indices of intra-frame matches.
-        in1 = np.array([matchProper[j].queryIdx 
-                        for j in range(len(matchProper))],dtype='int')
-        in2 = np.array([matchProper[j].trainIdx
-                        for j in range(len(matchProper))],dtype='int')
-                    
-        # Remove indices that don't satisfy epipolar constraint.
-        inepi = cg.epipolar_constraint(c1px[in1],c2px[in2],Tr1,Tr2)
-        n_fmatch = len(inepi)
-        in1 = in1[inepi]
-        in2 = in2[inepi]
-    
-        # Triangulate verified points.
-        X = cv2.triangulatePoints(P1,P2,c1px[in1].T,c2px[in2].T)
-        X = np.apply_along_axis(lambda v: v/v[-1],0,X)
-        X = X[:3,:].T
-    
-        # framePos is an Nx4 augmented array of 3D triangulated keypoint
-        # positions. frameDes are the corresponding descriptors of these
-        # intra-frame matches.
-        framePos = np.ones((len(inepi),4),dtype=np.float32)
-        frameDes = np.ones((len(inepi),des_len),dtype=desType)
-        framePos[:,:3] = X
-        if featureType in ['sift','surf']:
-            frameDes = (des1[in1] + des2[in2])/2
-            des1[in1] = (des1[in1] + des2[in2])/2
-            des2[in2] = (des1[in1] + des2[in2])/2
-        else:
-            frameDes = des1[in1]
-        
-        # Database matching. If it is the first frame, the database is a copy 
-        # of frameDes.
-        if i == 0:
-            dbPos = np.copy(framePos)
-            dbDes = np.copy(frameDes)
-            dbPos_matched = dbPos
-            dbDes_matched = dbDes
-            pEst = [0,0,0,0,0,0]
-            n_est = 0
-            n_lms = dbPos.shape[0]
-            dbmatch_time = 0
-            est_time = 0
-
-        elif estMethod == 'Horn':
-            dbmatch_time_start = time.perf_counter()
-            frameIdx, dbIdx = lm.dbmatch3D(frameDes,dbDes,matching_param)
-            dbmatch_time = time.perf_counter() - dbmatch_time_start
-            # Horn's method needs at least 3 points in each frame.
-            if (len(frameIdx) >= 3 and len(dbIdx) >= 3):
-                framePos_matched = framePos[frameIdx]
-                frameDes_matched = frameDes[frameIdx]
-                dbPos_matched = dbPos[dbIdx]
-                dbDes_matched = dbDes[dbIdx]
-            else: 
-                print("Not enough matches with database, returning previous pose.\n")
-                pList[i,:] = pEst
-                n_est = 0
-                n_lms = dbPos.shape[0]
-                counts[i,0] = n_key1
-                counts[i,1] = n_key2
-                counts[i,2] = n_fmatch
-                counts[i,3] = n_est
-                counts[i,4] = n_lms
-                timings[i,0] = det_time
-                timings[i,1] = fmatch_time
-                timings[i,2] = dbmatch_time
-                timings[i,3] = 0
-                i += 1
-                continue
-        
-        elif estMethod == 'GN':
-            dbmatch_time_start = time.perf_counter()
-            indb1, dbm1, indb2, dbm2 = lm.dbmatch(des1,des2,
-                                                  dbDes,matching_param)
-            # Time taken for database matching.
-            dbmatch_time = time.perf_counter() - dbmatch_time_start
-	
-        # Estimate pose. Points in frameDes that are not matched with landmarks in
-        # the database are added to database.
-        if i != 0:
-        
-            if estMethod == 'Horn':
-                est_time_start = time.perf_counter()
-                H = cg.hornmm(framePos_matched,dbPos_matched)
-                pEst = cg.mat2vec(H)
-                # Outlier removal.
-                sqerr = np.sqrt(np.sum(np.square((framePos_matched.T 
-                                - np.dot(H,dbPos_matched.T))),0))
-
-                outliers = lm.detect_outliers(sqerr)
-                framePos_matched = np.delete(framePos_matched,outliers,axis=0)
-                H = cg.hornmm(framePos_matched,
-                            np.delete(dbPos_matched,outliers,axis=0))
-                            
-                # Time taken to estimate pose using Horn's method.
-                est_time = time.perf_counter() - est_time_start
-                
-                dbPos = np.delete(dbPos,dbIdx[outliers],axis=0)
-                dbDes = np.delete(dbDes,dbIdx[outliers],axis=0)
-            
-                # Record number of points used to estimate pose.
-                n_est = framePos_matched.shape[0]
-                pflag = 0
-            
-                # Add new entries to database:
-                framePos_new = np.delete(framePos,[frameIdx],axis=0)
-                frameDes_new = np.delete(frameDes,[frameIdx],axis=0)
-                framePos_new = cg.mdot(np.linalg.inv(H),framePos_new.T).T
-                dbPos = np.append(dbPos,framePos_new,axis=0)
-                dbDes = np.append(dbDes,frameDes_new,axis=0)
-        
-            if estMethod == 'GN':
-                # In the case of no matches with database, indb1 or indb2 will be
-                # empty, which would cause error if called as indices.
-                est_time_start = time.perf_counter()
-                if (len(indb1) and len(indb2)):
-                    pEst, n_est, pflag = lm.GN_estimation(P1,P2,c1px[indb1,:],
-                                                c2px[indb2,:],dbPos[dbm1,:],
-                                                dbPos[dbm2,:],pEst)
-                elif len(indb1):
-                    pEst, n_est, pflag = lm.GN_estimation(P1,P2,c1px[indb1,:],
-                                                np.array([]),dbPos[dbm1,:],
-                                                np.array([]),pEst)
-                elif len(indb2):
-                    pEst, n_est, pflag = lm.GN_estimation(P1,P2,np.array([]),
-                                                c2px[indb2,:],np.array([]),
-                                                dbPos[dbm2,:],pEst)
-                else:
-                    pflag = -1
-                    n_est = 0
-                    print("No matches with database, returning previous pose.\n")
-                
-                H = cg.vec2mat(pEst)
-                est_time = time.perf_counter() - est_time_start
-            
-                lmInd = []
-                # Add new entries to database:
-                if pflag == 0:
-                    for j in range(len(in1)):
-                        if (in1[j] not in indb1) and (in2[j] not in indb2):
-                            lmInd.append(j)
-                    framePos_new = framePos[lmInd,:]
-                    frameDes_new = frameDes[lmInd,:]
-                    framePos_new = cg.mdot(np.linalg.inv(H),framePos_new.T).T
-                    dbPos = np.append(dbPos,framePos_new,axis=0)
-                    dbDes = np.append(dbDes,frameDes_new,axis=0)
-                    
-        # Record landmark information.
-        n_lms = dbPos.shape[0]
-        
-        counts[i,0] = n_key1
-        counts[i,1] = n_key2
-        counts[i,2] = n_fmatch
-        counts[i,3] = n_est
-        counts[i,4] = n_lms
-        
-        # Record timing information.
-        timings[i,0] = det_time
-        timings[i,1] = fmatch_time
-        timings[i,2] = dbmatch_time
-        timings[i,3] = est_time
-
-        print("Pose estimate for frame {} of {} is:\n {} \n".format(frame,study,pEst))
-        pList[i,:] = pEst
-    
-        print("{} landmarks in database.\n".format(n_lms))
-
-        # Update iteration number
+        pose_est, database = process_frame(frame,pose_est,study,detectorType,
+                                           descriptorType,estMethod,database,
+                                           ratioTest,
+                                           P1,P2,fc1,fc2,pp1,pp2,kk1,kk2,
+                                           kp1,kp2,Tr1,Tr2)
+                                           
+        poses[i,:] = pose_est
         i += 1
-
+        
     process_time = time.perf_counter() - start
     
-    print("Time taken to process study {}: {}\n\n".format(study,process_time))
-    
-    return pList, counts, timings, process_time
-
+    return
     
 if __name__ == '__main__':
     import datetime
