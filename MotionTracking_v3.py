@@ -20,10 +20,11 @@ import camerageometry as cg
 import landmarks as lm
 import robotexp
 import time
+import datetime
 
 def load_image(cam=1,study='yidi_nostamp',frame=0,
                imgPath=r'C:/Users/dhen2714/Documents/PHD/'+
-               r'Experiments/YidiRobotExp/robot_experiment/images/')):
+               r'Experiments/YidiRobotExp/robot_experiment/images/'):
     if cam == 1:
         cam_name = 'cam769_pos{}.pgm'.format(frame)
     elif cam == 2:
@@ -34,14 +35,17 @@ def load_image(cam=1,study='yidi_nostamp',frame=0,
     return img
 
 def get_keypoints_descriptors(img,detectorType,descriptorType):
+    """Detector keypoints with detectorType, and then extract and describe them
+    with descriptorType."""
     keys = detectorType.detect(img)
-    keys, descriptors = descriptorType.compute(img)
+    keys, descriptors = descriptorType.compute(img,keys)
     
     return keys, descriptors
     
 def get_pixel_coords(keypoints,fc,pp,kk,kp):
     """Get pixel coordinates of keypoints and correct for distortion."""
-    px = np.array([keypoints[j].pt for j in range(len(keypoints))])
+    px = np.zeros((len(keypoints),2),dtype=np.float32)
+    px[:,:] = np.array([keypoints[j].pt for j in range(len(keypoints))])
     px = cg.correct_dist(px,fc,pp,kk,kp)
     
     return px
@@ -64,17 +68,17 @@ def matched_indices(des1,des2,ratioTest):
         matches = bf.match(des1,des2)
         
     matches = lm.remove_duplicates(np.array(matches))
-    in1 = np.array([matchProper[j].queryIdx 
-                    for j in range(len(matchProper))],dtype='int')
-    in2 = np.array([matchProper[j].trainIdx
-                    for j in range(len(matchProper))],dtype='int')
+    in1 = np.array([matches[j].queryIdx 
+                    for j in range(len(matches))],dtype='int')
+    in2 = np.array([matches[j].trainIdx
+                    for j in range(len(matches))],dtype='int')
         
     return in1, in2
     
 def triangulate_keypoints(P1,P2,c1px,c2px):
     """Outputs Nx4 array of homogeneous triangulated matched keypoint 
     positions."""
-    X = cv2.triangulatePoints(P1,P2,c1px[in1].T,c2px[in2].T)
+    X = cv2.triangulatePoints(P1,P2,c1px.T,c2px.T)
     X = np.apply_along_axis(lambda v: v/v[-1],0,X)
     
     return X.T
@@ -89,7 +93,7 @@ class landmark_database:
     def isempty(self):
         if len(self.landmarks):
             flag = False
-        else
+        else:
             flag = True 
         return flag
         
@@ -145,9 +149,10 @@ def calc_pose_GN(c1px,c2px,d1,d2,database,prev_pose,X,in1,in2,
     # Database matching.
     fIdx1, dbIdx1 = matched_indices(d1,database.descriptors,ratioTest)
     fIdx2, dbIdx2 = matched_indices(d2,database.descriptors,ratioTest)
+    print(len(fIdx1),len(fIdx2),'\n')
     
     # Pose estimation.
-    if (len(fIdx1) and len(lenfIdx2)):
+    if (len(fIdx1) and len(fIdx2)):
         pose_est, n_est, pflag = lm.GN_estimation(
                                  P1,P2,
                                  c1px[fIdx1,:],
@@ -155,7 +160,7 @@ def calc_pose_GN(c1px,c2px,d1,d2,database,prev_pose,X,in1,in2,
                                  database.landmarks[dbIdx1,:],
                                  database.landmarks[dbIdx2,:],
                                  prev_pose)
-    elif len(indb1):
+    elif len(fIdx1):
         pose_est, n_est, pflag = lm.GN_estimation(
                                  P1,P2,
                                  c1px[fIdx1,:],
@@ -163,7 +168,7 @@ def calc_pose_GN(c1px,c2px,d1,d2,database,prev_pose,X,in1,in2,
                                  database.landmarks[dbIdx1,:],
                                  np.array([]),
                                  prev_pose)
-    elif len(indb2):
+    elif len(fIdx2):
         pose_est, n_est, pflag = lm.GN_estimation(
                                  P1,P2,
                                  np.array([]),
@@ -175,6 +180,7 @@ def calc_pose_GN(c1px,c2px,d1,d2,database,prev_pose,X,in1,in2,
         pflag = -1
         n_est = 0
         print("No matches with database, returning previous pose.\n")
+        return prev_pose, database
         
     H = cg.vec2mat(pose_est)
     # Add new entries to database.
@@ -192,8 +198,9 @@ def calc_pose_GN(c1px,c2px,d1,d2,database,prev_pose,X,in1,in2,
     return pose_est, database
 
 def process_frame(frame,prev_pose,study,detectorType,descriptorType,estMethod,
-                  database,ratioTest=True,
-                  P1,P2,fc1,fc2,pp1,pp2,kk1,kk2,kp1,kp2,Tr1,Tr2):
+                  database,
+                  P1,P2,fc1,fc2,pp1,pp2,kk1,kk2,kp1,kp2,Tr1,Tr2,
+                  ratioTest=True):
     """Output pose estimate for the current frame."""
     print("Processing {}, frame number {}...\n".format(study,frame))
     img1 = load_image(1,study,frame)
@@ -213,27 +220,54 @@ def process_frame(frame,prev_pose,study,detectorType,descriptorType,estMethod,
     # Remove indices that don't satisfy epipolar constraint.
     inepi = cg.epipolar_constraint(c1px[in1],c2px[in2],Tr1,Tr2)
     in1 = in1[inepi]
-    in2 = in1[inepi]
+    in2 = in2[inepi]
+
     # Triangulate intra-frame matched keypoints.
     X = triangulate_keypoints(P1,P2,c1px[in1],c2px[in2])
+    d1[in1] = (d1[in1] + d2[in2])/2
+    d2[in2] = (d1[in1] + d2[in2])/2
     
-    if frame == 1 or database.isempty():
+    if database.isempty():
         database = landmark_database(X,d1[in1])
         pose_est = prev_pose
     elif estMethod == 'Horn':
         pose_est, database = calc_pose_Horn(X,d1[in1],database,prev_pose,ratioTest)
     elif estMethod == 'GN':
         pose_est, database = calc_pose_GN(c1px,c2px,d1,d2,database,prev_pose,
-                                          X,in1,ind2,P1,P2,ratioTest)
+                                          X,in1,in2,P1,P2,ratioTest)
 
     print("Pose estimate for frame {} of {} is:\n {} \n".format(frame,study,pose_est))
     
     print("{} landmarks in database.\n".format(database.num_elements()))
 
     return pose_est, database
+    
+def output_data(outPath,filename,data,process_time='Not recorded.'):
+    today = datetime.date.today()
+    file = outPath + filename
+    Header = 'Date of output: {}'.format(today)
+    Footer = 'Processing time: {}'.format(process_time)
+    np.savetxt(file,data,header=Header,footer=Footer)
+    return
+    
+def get_name(object):
+    """Input an opencv feature detector or extractor instantiation, returns the
+    key for that object. E.g: if input is 'cv2.xfeatures2d.SIFT_create()',
+    output is 'sift'."""
+    key = object.__class__
+    keys = {cv2.xfeatures2d.SIFT_create().__class__ : 'sift',
+            cv2.xfeatures2d.SURF_create().__class__ : 'surf',
+            cv2.xfeatures2d.FREAK_create().__class__ : 'freak',
+            cv2.ORB_create().__class__ : 'orb',
+            cv2.BRISK_create().__class__ : 'brisk',
+            cv2.AKAZE_create().__class__ : 'akaze'}
+    name = keys[key]
+    return name
 
 def main(filepath,frames,study,detectorType,descriptorType,estMethod,
-                    P1,P2,fc1,fc2,pp1,pp2,kk1,kk2,kp1,kp2,Tr1,Tr2):
+         P1,P2,fc1,fc2,pp1,pp2,kk1,kk2,kp1,kp2,Tr1,Tr2,
+         outpath=False,
+         ratioTest=True):
 # This function incorporates the main loop of MotionTracking.py.
 # Inputs:
 #     filepath: Where the folders containing images for each study are.
@@ -271,7 +305,7 @@ def main(filepath,frames,study,detectorType,descriptorType,estMethod,
     counts = np.zeros((n_frames,5))
     timings = np.zeros((n_frames,4))
     
-    i = 0 # Iteration number. This may not necessarily be the same as frame.
+    iteration_number = 0
     
     # Initiate pose and database.
     pose_est = np.zeros(6)
@@ -282,20 +316,26 @@ def main(filepath,frames,study,detectorType,descriptorType,estMethod,
     for frame in frames:
         pose_est, database = process_frame(frame,pose_est,study,detectorType,
                                            descriptorType,estMethod,database,
-                                           ratioTest,
                                            P1,P2,fc1,fc2,pp1,pp2,kk1,kk2,
-                                           kp1,kp2,Tr1,Tr2)
+                                           kp1,kp2,Tr1,Tr2,
+                                           ratioTest)
                                            
-        poses[i,:] = pose_est
-        i += 1
+        poses[iteration_number,:] = pose_est
+        iteration_number += 1
         
     process_time = time.perf_counter() - start
+    print("Total processing time was {} seconds.".format(process_time))
+    
+    if outpath:
+        detector = get_name(detectorType)
+        descriptor = get_name(descriptorType)
+        filename = 'data_{0}_{1}_{2}_{3}.txt'.format(study,detector,descriptor,
+                                                     estMethod)
+        output_data(outpath,filename,poses,process_time)
     
     return
     
 if __name__ == '__main__':
-    import datetime
-    today = datetime.date.today()
     imgPath = (r'C:/Users/dhen2714/Documents/PHD/Experiments/YidiRobotExp/'+
                r'robot_experiment/images')
 
@@ -318,8 +358,6 @@ if __name__ == '__main__':
     kp1 = np.array([0.00329, -0.00263]) # Tangential distortion
     kp2 = np.array([0.00115, -0.00274])
     
-    studies, featureTypes, estMethods = robotexp.handle_args_v2(sys.argv)
-    
     # Rectify for outlier removal with epipolar constraint.
     Prec1,Prec2,Tr1,Tr2 = cg.rectify_fusiello(P1,P2)
     DD1,DD2 = cg.generate_dds(Tr1,Tr2)
@@ -331,44 +369,31 @@ if __name__ == '__main__':
     frames_ys1 = np.array([0,1,2,3,4,5,6,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29])
     frames_ys2 = np.array([0,1,2,3,4,5,6,7,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,25,26,27,28,29])
     frames_ans = np.array([0,1,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29])
-    #frames_as1 = np.array([0,1,2,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,25,26,27,28,29])
-    # 3/4/17 - Try this array of indices from as1. Instead of using pos2, use pos3.
     frames_as1 = np.array([0,1,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,25,26,27,28,29])
     frames_as2 = np.arange(30)
     valid_frames = [frames_yns,frames_ys1,frames_ys2,frames_ans,frames_as1,frames_as2]
     
-    output_path = r'C:/Users/dhen2714/Documents/PHD/Experiments/YidiRobotExp/Results/20170428_Results/'
+    output_path = r'C:/Users/dhen2714/Documents/PHD/Software/MarkerlessTracking/Results'
     
-    tot_start = time.perf_counter()
-    for study in studies:
+    study = 'yidi_nostamp'
+    detectorType = cv2.xfeatures2d.SIFT_create()
+    descriptorType = cv2.xfeatures2d.SIFT_create()
+    #detectorType = cv2.ORB_create(nfeatures=3000)
+    #descriptorType = cv2.ORB_create()
+    estMethod = 'GN'
     
-        if study == 'yidi_nostamp':
-            frames = frames_yns
-        elif study == 'yidi_stamp1':
-            frames = frames_ys1
-        elif study == 'yidi_stamp2':
-            frames = frames_ys2
-        elif study == 'andre_nostamp':
-            frames = frames_ans
-        elif study == 'andre_stamp1':
-            frames = frames_as1
-        elif study == 'andre_stamp2':
-            frames = frames_as2
-        
-        for featureType in featureTypes:
-        
-            matching_param = 0.6
-        
-            for estMethod in estMethods:
-                pList, lms_record, timings, process_time = motion_tracking(imgPath,frames,study,featureType,estMethod,matching_param,P1,P2,fc1,fc2,pp1,pp2,kk1,kk2,kp1,kp2,Tr1,Tr2)
-                data_array = np.hstack((pList,lms_record,timings))
-                file_path = output_path + study + r'/'
-                filename = file_path + 'data_{0}_{1}_{2}.txt'.format(study,featureType,estMethod)
-                Header = 'Study: {}\nFeatures: {}\nPoses processed: {}'.format(study,featureType,frames)
-                Footer = 'Date of data output: {}\nTime taken: {}'.format(today,process_time)
-                np.savetxt(filename,data_array,header=Header,footer=Footer)
-                
-        
-    tot_time = time.perf_counter() - tot_start
+    if study == 'yidi_nostamp':
+        frames = frames_yns
+    elif study == 'yidi_stamp1':
+        frames = frames_ys1
+    elif study == 'yidi_stamp2':
+        frames = frames_ys2
+    elif study == 'andre_nostamp':
+        frames = frames_ans
+    elif study == 'andre_stamp1':
+        frames = frames_as1
+    elif study == 'andre_stamp2':
+        frames = frames_as2
     
-    print("The total processing time is: {}".format(tot_time))
+    main(imgPath,frames,study,detectorType,descriptorType,estMethod,
+         P1,P2,fc1,fc2,pp1,pp2,kk1,kk2,kp1,kp2,Tr1,Tr2)

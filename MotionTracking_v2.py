@@ -199,6 +199,7 @@ def motion_tracking(filepath,frames,study,featureType,estMethod,matching_param,
             indb1, dbm1, indb2, dbm2 = lm.dbmatch(des1,des2,
                                                   dbDes,matching_param)
             # Time taken for database matching.
+            print(len(indb1),len(indb2),'\n')
             dbmatch_time = time.perf_counter() - dbmatch_time_start
 	
         # Estimate pose. Points in frameDes that are not matched with landmarks in
@@ -265,6 +266,7 @@ def motion_tracking(filepath,frames,study,featureType,estMethod,matching_param,
                     for j in range(len(in1)):
                         if (in1[j] not in indb1) and (in2[j] not in indb2):
                             lmInd.append(j)
+
                     framePos_new = framePos[lmInd,:]
                     frameDes_new = frameDes[lmInd,:]
                     framePos_new = cg.mdot(np.linalg.inv(H),framePos_new.T).T

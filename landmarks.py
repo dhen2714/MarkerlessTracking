@@ -80,7 +80,7 @@ def dbmatch(des1,des2,db,threshold):
             matches1.append(m)
     for m, n in m2:
         if m.distance < threshold*n.distance:
-                matches2.append(m)
+            matches2.append(m)
                 
     matches1 = remove_duplicates(np.array(matches1))
     matches2 = remove_duplicates(np.array(matches2))
