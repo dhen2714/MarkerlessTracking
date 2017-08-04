@@ -64,7 +64,7 @@ def matched_indices(des1,des2,ratioTest):
                 matches.append(m)
                 
     else:
-        bf = cv2.BFMatcher(cv2.NORM_Hamming, crossCheck=True)
+        bf = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=True)
         matches = bf.match(des1,des2)
         
     matches = lm.remove_duplicates(np.array(matches))
@@ -149,7 +149,6 @@ def calc_pose_GN(c1px,c2px,d1,d2,database,prev_pose,X,in1,in2,
     # Database matching.
     fIdx1, dbIdx1 = matched_indices(d1,database.descriptors,ratioTest)
     fIdx2, dbIdx2 = matched_indices(d2,database.descriptors,ratioTest)
-    print(len(fIdx1),len(fIdx2),'\n')
     
     # Pose estimation.
     if (len(fIdx1) and len(fIdx2)):
@@ -191,7 +190,7 @@ def calc_pose_GN(c1px,c2px,d1,d2,database,prev_pose,X,in1,in2,
                 new_lms.append(j)
                 
         X_new = X[new_lms,:]
-        descriptors_new = d1[new_lms,:]
+        descriptors_new = d1[in1[new_lms],:]
         X_new = cg.mdot(np.linalg.inv(H),X_new.T).T
         database.update(X_new,descriptors_new)
         
@@ -224,8 +223,8 @@ def process_frame(frame,prev_pose,study,detectorType,descriptorType,estMethod,
 
     # Triangulate intra-frame matched keypoints.
     X = triangulate_keypoints(P1,P2,c1px[in1],c2px[in2])
-    d1[in1] = (d1[in1] + d2[in2])/2
-    d2[in2] = (d1[in1] + d2[in2])/2
+    #d1[in1] = (d1[in1] + d2[in2])/2
+    #d2[in2] = (d1[in1] + d2[in2])/2
     
     if database.isempty():
         database = landmark_database(X,d1[in1])
@@ -376,11 +375,11 @@ if __name__ == '__main__':
     output_path = r'C:/Users/dhen2714/Documents/PHD/Software/MarkerlessTracking/Results'
     
     study = 'yidi_nostamp'
-    detectorType = cv2.xfeatures2d.SIFT_create()
-    descriptorType = cv2.xfeatures2d.SIFT_create()
-    #detectorType = cv2.ORB_create(nfeatures=3000)
-    #descriptorType = cv2.ORB_create()
-    estMethod = 'GN'
+    #detectorType = cv2.xfeatures2d.SIFT_create()
+    #descriptorType = cv2.xfeatures2d.FREAK_create()
+    detectorType = cv2.BRISK_create()
+    descriptorType = cv2.BRISK_create()
+    estMethod = 'Horn'
     
     if study == 'yidi_nostamp':
         frames = frames_yns
@@ -396,4 +395,4 @@ if __name__ == '__main__':
         frames = frames_as2
     
     main(imgPath,frames,study,detectorType,descriptorType,estMethod,
-         P1,P2,fc1,fc2,pp1,pp2,kk1,kk2,kp1,kp2,Tr1,Tr2)
+         P1,P2,fc1,fc2,pp1,pp2,kk1,kk2,kp1,kp2,Tr1,Tr2,ratioTest=False)
