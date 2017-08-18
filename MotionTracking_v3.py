@@ -31,26 +31,32 @@ def load_image(cam=1,study='yidi_nostamp',frame=0,
         cam_name = 'cam802_pos{}.pgm'.format(frame)
         
     img = cv2.imread(imgPath+study+r'/'+cam_name,0)
-    
     return img
 
 def get_keypoints_descriptors(img,detectorType,descriptorType):
     """Detector keypoints with detectorType, and then extract and describe them
     with descriptorType."""
     keys = detectorType.detect(img)
-    keys, descriptors = descriptorType.compute(img,keys)
-    
+    keys, descriptors = descriptorType.compute(img,keys) 
     return keys, descriptors
     
 def get_pixel_coords(keypoints,fc,pp,kk,kp):
     """Get pixel coordinates of keypoints and correct for distortion."""
     px = np.zeros((len(keypoints),2),dtype=np.float32)
     px[:,:] = np.array([keypoints[j].pt for j in range(len(keypoints))])
-    px = cg.correct_dist(px,fc,pp,kk,kp)
-    
+    px = cg.correct_dist(px,fc,pp,kk,kp)   
     return px
     
-def matched_indices(des1,des2,ratioTest):
+def binary_check(descriptorType):
+    """Returns boolean True if descriptorType is binary, False otherwise."""
+    name = get_name(descriptorType)
+    if name in ['brisk','orb','akaze','freak']:
+        check = True
+    else:
+        check = False
+    return check
+    
+def matched_indices(des1,des2,ratioTest=True,binary=False):
     """Perform matching. If ratioTest is True, use nearest neighbour ratio 
     test. If not, perform binary descriptor matching with crossChecking.
     Returns indices of descriptor matches."""
@@ -64,23 +70,26 @@ def matched_indices(des1,des2,ratioTest):
                 matches.append(m)
                 
     else:
-        bf = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=True)
+        if binary:
+            print("BINARY MATCHING")
+            bf = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=True)
+        else:
+            print("NORM L2 MATCHING")
+            bf = cv2.BFMatcher(cv2.NORM_L2, crossCheck=True)
         matches = bf.match(des1,des2)
         
     matches = lm.remove_duplicates(np.array(matches))
     in1 = np.array([matches[j].queryIdx 
                     for j in range(len(matches))],dtype='int')
     in2 = np.array([matches[j].trainIdx
-                    for j in range(len(matches))],dtype='int')
-        
+                    for j in range(len(matches))],dtype='int')    
     return in1, in2
     
 def triangulate_keypoints(P1,P2,c1px,c2px):
     """Outputs Nx4 array of homogeneous triangulated matched keypoint 
     positions."""
     X = cv2.triangulatePoints(P1,P2,c1px.T,c2px.T)
-    X = np.apply_along_axis(lambda v: v/v[-1],0,X)
-    
+    X = np.apply_along_axis(lambda v: v/v[-1],0,X)  
     return X.T
     
 class landmark_database:
@@ -109,11 +118,18 @@ class landmark_database:
         return len(self.landmarks)
         
 
-def calc_pose_Horn(X,descriptors,database,prev_pose,ratioTest=True):
+def calc_pose_Horn(X,descriptors,database,prev_pose,
+                   ratioTest=True,binary=False):
     """Estimate pose using Horn's method."""
-    # Database matching.
-    frameIdx, dbIdx = matched_indices(descriptors,database.descriptors,ratioTest)
+    df = np.zeros(3)
     
+    # Database matching.
+    db_match_start = time.perf_counter()
+    frameIdx, dbIdx = matched_indices(descriptors,database.descriptors,
+                                      ratioTest,binary)
+    db_match_end = time.perf_counter() - db_match_start
+    
+    pose_est_start = time.perf_counter()
     # Pose estimation.
     if (len(frameIdx) >= 3 and len(dbIdx) >= 3):
         X_matched = X[frameIdx]
@@ -131,25 +147,38 @@ def calc_pose_Horn(X,descriptors,database,prev_pose,ratioTest=True):
         H = cg.hornmm(X_matched,
                     np.delete(dbPos_matched,outliers,axis=0))
         database.trim(dbIdx[outliers])
+        
+        # Record number of keypoints used to calculate pose.
+        n_est = len(X_matched)
 
+        pose_est_end = time.perf_counter() - pose_est_start
         # Add new entries to database.
         X_new = np.delete(X,[frameIdx],axis=0)
         descriptors_new = np.delete(descriptors,[frameIdx],axis=0)
         X_new = cg.mdot(np.linalg.inv(H),X_new.T).T
         database.update(X_new,descriptors_new)
     else:
+        pose_est_end = time.perf_counter() - pose_est_start
         print("Not enough matches with database, returning previous pose.\n")
-        pose_est = prev_pose 
+        pose_est = prev_pose
+        n_est = 0
 
-    return pose_est, database
+    df[:] = np.array([db_match_end, pose_est_end, n_est])
+    
+    return pose_est, database, df
     
 def calc_pose_GN(c1px,c2px,d1,d2,database,prev_pose,X,in1,in2,
-                 P1,P2,ratioTest=True):
+                 P1,P2,ratioTest=True,binary=False):
     """Estimate pose using GN iterations."""
-    # Database matching.
-    fIdx1, dbIdx1 = matched_indices(d1,database.descriptors,ratioTest)
-    fIdx2, dbIdx2 = matched_indices(d2,database.descriptors,ratioTest)
+    df = np.zeros(3)
     
+    db_match_start = time.perf_counter()    
+    # Database matching.
+    fIdx1, dbIdx1 = matched_indices(d1,database.descriptors,ratioTest,binary)
+    fIdx2, dbIdx2 = matched_indices(d2,database.descriptors,ratioTest,binary)
+    db_match_end = time.perf_counter() - db_match_start
+    
+    pose_est_start = time.perf_counter()
     # Pose estimation.
     if (len(fIdx1) and len(fIdx2)):
         pose_est, n_est, pflag = lm.GN_estimation(
@@ -179,7 +208,9 @@ def calc_pose_GN(c1px,c2px,d1,d2,database,prev_pose,X,in1,in2,
         pflag = -1
         n_est = 0
         print("No matches with database, returning previous pose.\n")
-        return prev_pose, database
+        pose_est = prev_pose
+        
+    pose_est_end = time.perf_counter() - pose_est_start
         
     H = cg.vec2mat(pose_est)
     # Add new entries to database.
@@ -193,20 +224,28 @@ def calc_pose_GN(c1px,c2px,d1,d2,database,prev_pose,X,in1,in2,
         descriptors_new = d1[in1[new_lms],:]
         X_new = cg.mdot(np.linalg.inv(H),X_new.T).T
         database.update(X_new,descriptors_new)
-        
-    return pose_est, database
+
+    df[:] = np.array([db_match_end, pose_est_end, n_est])        
+ 
+    return pose_est, database, df
 
 def process_frame(frame,prev_pose,study,detectorType,descriptorType,estMethod,
                   database,
                   P1,P2,fc1,fc2,pp1,pp2,kk1,kk2,kp1,kp2,Tr1,Tr2,
-                  ratioTest=True):
+                  ratioTest=True,binary=False):
     """Output pose estimate for the current frame."""
     print("Processing {}, frame number {}...\n".format(study,frame))
+    
+    frame_start = time.perf_counter()
+    frame_data = np.zeros(10)
+    
     img1 = load_image(1,study,frame)
     img2 = load_image(2,study,frame)
 
+    fd_start = time.perf_counter()
     k1, d1 = get_keypoints_descriptors(img1,detectorType,descriptorType)
     k2, d2 = get_keypoints_descriptors(img2,detectorType,descriptorType)
+    fd_end = time.perf_counter() - fd_start
     
     # Assemble arrays of pixel coordinates for keypoints in current frame.
     c1px = get_pixel_coords(k1,fc1,pp1,kk1,kp1)
@@ -214,12 +253,14 @@ def process_frame(frame,prev_pose,study,detectorType,descriptorType,estMethod,
     
     # Intra-frame matching. Creates a list of 'DMatch' objects, which can be 
     # queried to obtain matched keypoint indices and their positions.
-    in1, in2 = matched_indices(d1,d2,ratioTest)
+    if_match_start = time.perf_counter()
+    in1, in2 = matched_indices(d1,d2,ratioTest,binary)
     
     # Remove indices that don't satisfy epipolar constraint.
     inepi = cg.epipolar_constraint(c1px[in1],c2px[in2],Tr1,Tr2)
     in1 = in1[inepi]
     in2 = in2[inepi]
+    if_match_end = time.perf_counter() - if_match_start
 
     # Triangulate intra-frame matched keypoints.
     X = triangulate_keypoints(P1,P2,c1px[in1],c2px[in2])
@@ -229,17 +270,35 @@ def process_frame(frame,prev_pose,study,detectorType,descriptorType,estMethod,
     if database.isempty():
         database = landmark_database(X,d1[in1])
         pose_est = prev_pose
+        # 'df' is an array that contains time taken to database match,
+        # calculate pose, and number of keypoints used to est motion.
+        df = np.zeros(3)
     elif estMethod == 'Horn':
-        pose_est, database = calc_pose_Horn(X,d1[in1],database,prev_pose,ratioTest)
+        pose_est, database, df = calc_pose_Horn(X,d1[in1],database,prev_pose,
+                                                ratioTest,binary)
     elif estMethod == 'GN':
-        pose_est, database = calc_pose_GN(c1px,c2px,d1,d2,database,prev_pose,
-                                          X,in1,in2,P1,P2,ratioTest)
+        pose_est, database, df = calc_pose_GN(c1px,c2px,d1,d2,database,
+                                              prev_pose,X,in1,in2,P1,P2,
+                                              ratioTest,binary)
 
-    print("Pose estimate for frame {} of {} is:\n {} \n".format(frame,study,pose_est))
+    print("Pose estimate for frame {} of {} is:\n {} \n".format(
+                                                         frame,study,pose_est))
     
-    print("{} landmarks in database.\n".format(database.num_elements()))
+    nlm = database.num_elements()
+    print("{} landmarks in database.\n".format(nlm))
+    
+    frame_end = time.perf_counter() - frame_start
+    frame_data = create_frame_data(frame_end,fd_end,if_match_end,df,
+                                   len(k1),len(k2),len(X),nlm)
 
-    return pose_est, database
+    return pose_est, database, frame_data
+    
+def create_frame_data(frame_end,fd_end,if_match_end,df,nk1,nk2,nX,nlm):
+    frame_data = np.zeros(10)
+    frame_data[:3] = np.array([frame_end,fd_end,if_match_end])
+    frame_data[3:5] = df[:2]
+    frame_data[5:] = np.array([nk1,nk2,nX,df[2],nlm])
+    return frame_data
     
 def output_data(outPath,filename,data,process_time='Not recorded.'):
     today = datetime.date.today()
@@ -303,6 +362,7 @@ def main(filepath,frames,study,detectorType,descriptorType,estMethod,
     poses = np.zeros((n_frames,6))
     counts = np.zeros((n_frames,5))
     timings = np.zeros((n_frames,4))
+    data = np.zeros((n_frames,10))
     
     iteration_number = 0
     
@@ -310,16 +370,22 @@ def main(filepath,frames,study,detectorType,descriptorType,estMethod,
     pose_est = np.zeros(6)
     database = landmark_database()
     
+    binary = binary_check(descriptorType)
+    print("Outcome of binary check is: ",binary)
+    #binary = False 
+    
     start = time.perf_counter()
     # Main loop.
     for frame in frames:
-        pose_est, database = process_frame(frame,pose_est,study,detectorType,
-                                           descriptorType,estMethod,database,
+        pose_est, database, frame_data = process_frame(frame,pose_est,study,
+                                           detectorType,descriptorType,
+                                           estMethod,database,
                                            P1,P2,fc1,fc2,pp1,pp2,kk1,kk2,
                                            kp1,kp2,Tr1,Tr2,
-                                           ratioTest)
+                                           ratioTest,binary)
                                            
         poses[iteration_number,:] = pose_est
+        data[iteration_number,:] = frame_data
         iteration_number += 1
         
     process_time = time.perf_counter() - start
@@ -328,9 +394,16 @@ def main(filepath,frames,study,detectorType,descriptorType,estMethod,
     if outpath:
         detector = get_name(detectorType)
         descriptor = get_name(descriptorType)
-        filename = 'data_{0}_{1}_{2}_{3}.txt'.format(study,detector,descriptor,
-                                                     estMethod)
-        output_data(outpath,filename,poses,process_time)
+        filename_poses = 'poses_{0}_{1}_{2}_{3}.txt'.format(study,
+                                                            detector,
+                                                            descriptor,
+                                                            estMethod)
+        filename_data = 'data_{0}_{1}_{2}_{3}.txt'.format(study,
+                                                          detector,
+                                                          descriptor,
+                                                          estMethod)
+        output_data(outpath,filename_poses,poses,process_time)
+        output_data(outpath,filename_data,data,process_time)
     
     return
     
@@ -379,6 +452,9 @@ if __name__ == '__main__':
     #descriptorType = cv2.xfeatures2d.FREAK_create()
     detectorType = cv2.BRISK_create()
     descriptorType = cv2.BRISK_create()
+    #detectorType = cv2.xfeatures2d.SIFT_create()
+    detectorType = cv2.AKAZE_create()
+    descriptorType = cv2.AKAZE_create()
     estMethod = 'Horn'
     
     if study == 'yidi_nostamp':
