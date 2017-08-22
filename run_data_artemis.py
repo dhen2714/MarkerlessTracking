@@ -1,17 +1,7 @@
 """
-02/08/17
-Estimate motion using feature detectors.
-
-python MotionTracking_v2.py study detector estmethod
-
-study: [all,yidi_nostamp,yidi_stamp1,yidi_stamp2,
-        andre_nostamp,andre_stamp1,andre_stamp2]
-detector: [all,sift,surf,brisk,orb,akaze]
-estmethod: [all,GN, Horn]
-
-The 'all' option loops over all studies and/or detectors.
-
-For functions used, see camerageometry.py, landmarks.py, and robotexp.py.
+22/08/17
+Runs MotionTracking_v3 for each feature detector/descriptor combination, and 
+for each study.
 """
 import sys
 import numpy as np
@@ -23,8 +13,8 @@ import time
 import datetime
 
 def load_image(cam=1,study='yidi_nostamp',frame=0,
-               imgPath=r'C:/Users/dhen2714/Documents/PHD/'+
-               r'Experiments/YidiRobotExp/robot_experiment/images/'):
+               imgPath=r'/project/RDS-FEI-MRI_MT-RW/'+
+               r'David/YidiRobotExp/robot_experiment/images/'):
     if cam == 1:
         cam_name = 'cam769_pos{}.pgm'.format(frame)
     elif cam == 2:
@@ -123,6 +113,7 @@ class landmark_database:
     def num_elements(self):
         return len(self.landmarks)
         
+
 def calc_pose_Horn(X,descriptors,database,prev_pose,
                    ratioTest=True,binary=False):
     """Estimate pose using Horn's method."""
@@ -224,7 +215,7 @@ def calc_pose_GN(c1px,c2px,d1,d2,database,prev_pose,X,in1,in2,
         for j in range(len(in1)):
             if (in1[j] not in fIdx1) and (in2[j] not in fIdx2):
                 new_lms.append(j)
-        
+                
         X_new = X[new_lms,:]
         descriptors_new = d1[in1[new_lms],:]
         X_new = cg.mdot(np.linalg.inv(H),X_new.T).T
@@ -326,7 +317,7 @@ def get_name(object):
             cv2.AKAZE_create().__class__ : 'akaze'}
     name = keys[key]
     return name
-    
+
 def get_object(name):
     """Input key, returns opencv object."""
     if name == 'sift':
@@ -345,7 +336,7 @@ def get_object(name):
         print("Name not recognised")
         return
     return obj
-
+    
 def main(filepath,frames,study,detectorType,descriptorType,estMethod,
          P1,P2,fc1,fc2,pp1,pp2,kk1,kk2,kp1,kp2,Tr1,Tr2,
          outpath=False,
@@ -469,30 +460,50 @@ if __name__ == '__main__':
     frames_as2 = np.arange(30)
     valid_frames = [frames_yns,frames_ys1,frames_ys2,frames_ans,frames_as1,frames_as2]
     
-    output_path = r'C:/Users/dhen2714/Documents/PHD/Software/MarkerlessTracking/Results/Pmat/'
+    output_path_parent = r'/project/RDS-FEI-MRI_MT-RW/David/YidiRobotExp/Results/20170822_Results/'
     
-    study = 'andre_nostamp'
-    #detectorType = cv2.xfeatures2d.SIFT_create()
-    #descriptorType = cv2.xfeatures2d.FREAK_create()
-    #detectorType = cv2.ORB_create(nfeatures=3000)
-    #descriptorType = cv2.ORB_create()
-    #detectorType = cv2.xfeatures2d.SIFT_create()
-    detectorType = cv2.AKAZE_create()
-    descriptorType = cv2.xfeatures2d.FREAK_create()
-    estMethod = 'GN'
+    studies = ['yidi_nostamp','yidi_stamp1','yidi_stamp2','andre_nostamp','andre_stamp1','andre_stamp2']
     
-    if study == 'yidi_nostamp':
-        frames = frames_yns
-    elif study == 'yidi_stamp1':
-        frames = frames_ys1
-    elif study == 'yidi_stamp2':
-        frames = frames_ys2
-    elif study == 'andre_nostamp':
-        frames = frames_ans
-    elif study == 'andre_stamp1':
-        frames = frames_as1
-    elif study == 'andre_stamp2':
-        frames = frames_as2
+    # Detectors to loop through
+    det = ['sift','surf','brisk','orb','akaze']
+    # Detectors with their compatible descriptors 
+    descs = {'sift' : ['sift','surf','brisk','freak'],
+             'surf' : ['sift','surf','brisk','orb','freak'],
+             'brisk' : ['sift','surf','brisk','orb','freak'],
+             'orb' : ['sift','surf','brisk','orb','freak'],
+             'akaze' : ['sift','surf','brisk','orb','freak','akaze']}
+             
+    estMethods = ['Horn','GN']
     
-    main(imgPath,frames,study,detectorType,descriptorType,estMethod,
-         P1,P2,fc1,fc2,pp1,pp2,kk1,kk2,kp1,kp2,Tr1,Tr2,ratioTest=True,outpath=output_path)
+    for study in studies:
+    
+        if study == 'yidi_nostamp':
+            frames = frames_yns
+        elif study == 'yidi_stamp1':
+            frames = frames_ys1
+        elif study == 'yidi_stamp2':
+            frames = frames_ys2
+        elif study == 'andre_nostamp':
+            frames = frames_ans
+        elif study == 'andre_stamp1':
+            frames = frames_as1
+        elif study == 'andre_stamp2':
+            frames = frames_as2
+            
+        outpath = output_path_parent + study + r'/'
+    
+        for detector in det:
+            
+            detectorType = get_object(detector)
+            des_list = descs[detector]
+            
+            for descriptor in des_list:
+                
+                descriptorType = get_object(descriptor)
+                
+                for estMethod in estMethods:
+                    
+                    print("Currently processing {0}, with {1}/{2}, and estMethod {3}".format(study,detector,descriptor,estMethod))
+                    
+                    main(imgPath,frames,study,detectorType,descriptorType,estMethod,
+                         P1,P2,fc1,fc2,pp1,pp2,kk1,kk2,kp1,kp2,Tr1,Tr2,ratioTest=True,outpath=outpath)

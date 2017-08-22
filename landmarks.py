@@ -290,7 +290,7 @@ def GN_estimation(P1,P2,uv1m,uv2m,dbc1,dbc2,pose,iter_n=10,olThold=2):
             print("Cannot estimate pose from this frame, return last pose.")
             n_points = 0
             flag = -1
-            return p_init, flag
+            return p_init, n_points, flag
         
         if J1.size and J2.size:
             J = np.concatenate((J1,J2),axis=0)
